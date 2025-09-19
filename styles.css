@@ -1,0 +1,200 @@
+:root{
+  --bg:#050507;
+  --panel:#0b0b0d;
+  --muted:#9b9ba3;
+  --accent:#9b59ff;
+}
+
+/* Basic reset */
+*{box-sizing:border-box}
+html,body{height:100%;margin:0;background:radial-gradient(1200px 600px at 10% 10%, rgba(155,89,255,0.06), transparent 8%), var(--bg);color:#fff;font-family:Inter, system-ui, Arial;-webkit-font-smoothing:antialiased}
+
+/* layout */
+.app{min-height:100vh;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:28px;gap:28px}
+.topbar{width:100%;max-width:1200px;display:flex;justify-content:space-between;align-items:center;padding:6px 12px;color:var(--muted)}
+.topbar h1{margin:0;font-size:14px;color:var(--muted)}
+
+/* right side (modes + settings) */
+.right-controls{display:flex;align-items:center;gap:12px}
+.modes{display:flex;gap:8px}
+.mode{background:transparent;color:var(--muted);border:1px solid rgba(255,255,255,0.04);padding:6px 10px;border-radius:10px;font-size:13px;cursor:pointer;transition:all .22s ease}
+.mode.active{color:white;background:linear-gradient(90deg, rgba(155,89,255,0.12), rgba(155,89,255,0.04));box-shadow:0 6px 20px rgba(155,89,255,0.06);transform:translateY(-2px)}
+
+/* settings icon button */
+.icon-btn{
+  display:inline-grid;
+  place-items:center;
+  width:40px;height:40px;
+  border-radius:10px;
+  background:transparent;
+  border:1px solid rgba(255,255,255,0.03);
+  color:var(--muted);
+  cursor:pointer;
+  transition:all .18s ease;
+}
+.icon-btn:hover{transform:translateY(-2px); color: white; border-color: rgba(155,89,255,0.18); box-shadow: 0 8px 30px rgba(155,89,255,0.06)}
+.icon-btn svg{display:block}
+
+/* timer */
+.timer-wrap{width:100%;max-width:1600px;display:flex;align-items:center;justify-content:center;padding:12px}
+.timer{width:100%;display:flex;justify-content:center;align-items:center;user-select:none;perspective:1400px;padding:8vh 2vw;overflow:visible}
+
+/* digits */
+.digits{display:flex;align-items:flex-end;gap:0.25ch;line-height:0.8}
+.digit{
+  display:inline-block;
+  transform-origin: center bottom; /* stretch upward */
+  will-change:transform,filter,opacity;
+  font-weight:900;
+  font-size: calc(16vw + 6vh);
+  letter-spacing:-0.02em;
+  color:#fefefe;
+  text-shadow:0 40px 120px rgba(0,0,0,0.7);
+}
+.colon{display:inline-block;font-weight:900;font-size: calc(8vw + 3vh);opacity:0.9;transform: translateY(-2vh);margin:0 1vw}
+
+/* vertical rubber stretch keyframes for digits */
+@keyframes rubberStretchY {
+  0% { transform: translateZ(0) scaleY(1) scaleX(1) translateY(0); filter: blur(0px); }
+  18% { transform: translateZ(-40px) scaleY(2.6) scaleX(0.82) translateY(-8%); filter: blur(3px); }
+  45% { transform: translateZ(-8px) scaleY(0.85) scaleX(1.06) translateY(6%); filter: blur(1.2px); }
+  72% { transform: translateZ(-4px) scaleY(1.06) scaleX(0.99) translateY(-2%); filter: blur(.6px); }
+  100% { transform: translateZ(0) scaleY(1) scaleX(1) translateY(0); filter: blur(0px); }
+}
+.digit.stretch { animation: rubberStretchY 640ms cubic-bezier(.2,.85,.3,1); text-shadow: 0 80px 200px rgba(0,0,0,0.85); }
+.digit.pull-up { animation: pullUp 640ms cubic-bezier(.2,.85,.3,1); }
+
+/* controls */
+.controls{display:flex;gap:12px;align-items:center;justify-content:center;flex-wrap:wrap}
+.control{background:linear-gradient(180deg, rgba(255,255,255,0.03), rgba(255,255,255,0.01));border:1px solid rgba(255,255,255,0.04);color:var(--muted);padding:10px 14px;border-radius:12px;font-size:14px;cursor:pointer;min-width:88px;transition:transform .12s ease}
+.control.primary{background:linear-gradient(90deg,var(--accent), #6b3fd0); color: white; border: none; box-shadow: 0 8px 30px rgba(107,63,208,0.12)}
+.control:active{transform:translateY(1px)}
+.control:disabled{opacity:0.45;cursor:not-allowed}
+.footer{color:var(--muted);font-size:12px;margin-top:6vh;opacity:0.8}
+
+/* modal / overlay */
+.overlay{position:fixed;inset:0;display:grid;place-items:center;padding:24px;z-index:60}
+.overlay.hidden{pointer-events:none;opacity:0;visibility:hidden}
+.overlay:not(.hidden){background:linear-gradient(180deg, rgba(0,0,0,0.55), rgba(0,0,0,0.7));pointer-events:auto;opacity:1;visibility:visible}
+.modal{width:100%;max-width:520px;background:linear-gradient(180deg, rgba(11,11,13,0.98), rgba(18,18,20,0.98));border-radius:12px;padding:18px;border:1px solid rgba(255,255,255,0.03);box-shadow:0 20px 60px rgba(0,0,0,0.6)}
+.modal-header{display:flex;align-items:center;justify-content:space-between;margin-bottom:8px}
+.modal-header h2{margin:0;font-size:16px;color:white}
+.icon-close{background:transparent;border:0;color:var(--muted);font-size:22px;cursor:pointer;padding:6px;border-radius:8px}
+.modal-body{display:flex;flex-direction:column;gap:12px}
+.field{display:flex;flex-direction:column;gap:6px}
+.field.row{flex-direction:row;align-items:center;justify-content:space-between}
+.field label{font-size:13px;color:var(--muted)}
+.field input[type="number"]{width:100%;padding:10px;border-radius:8px;border:1px solid rgba(255,255,255,0.04);background:transparent;color:white;font-size:15px}
+.field input[type="checkbox"]{width:18px;height:18px}
+.actions{display:flex;gap:8px;justify-content:flex-end;margin-top:6px}
+
+/* radio rows styling */
+.radio-row{display:flex;gap:10px;align-items:center;padding:8px 10px;border-radius:8px;border:1px solid rgba(255,255,255,0.03);cursor:pointer}
+.radio-row input[type="radio"]{width:16px;height:16px}
+
+/* ----------------
+   Phase transition overlay (flame + pulled text)
+   ---------------- */
+.phase-overlay{
+  position:fixed;
+  inset:0;
+  z-index:100;
+  pointer-events:none;
+  display:grid;
+  place-items:center;
+  overflow:hidden;
+}
+.phase-overlay.hidden{opacity:0;visibility:hidden}
+.phase-overlay:not(.hidden){opacity:1;visibility:visible}
+
+/* the big flame-cloud */
+.flame-cloud{
+  position:absolute;
+  left:-35%;
+  top: -20%;
+  width:120%;
+  height:140%;
+  pointer-events:none;
+  transform: translateX(-100%);
+  filter: blur(40px) saturate(140%) contrast(110%);
+  background:
+    radial-gradient(40% 40% at 10% 20%, rgba(255,140,0,0.95), transparent 20%),
+    radial-gradient(60% 50% at 30% 40%, rgba(255,80,0,0.85), transparent 25%),
+    radial-gradient(50% 60% at 60% 60%, rgba(255,30,0,0.75), transparent 30%),
+    linear-gradient(90deg, rgba(255,180,80,0.06), rgba(255,120,60,0.05));
+  opacity:0;
+}
+
+/* flame cloud animation: slide across and fade */
+@keyframes flameSweep {
+  0% { transform: translateX(-120%) scale(1); opacity:0; filter: blur(40px) saturate(120%) contrast(100%) }
+  10% { opacity:1; filter: blur(30px) saturate(140%) contrast(120%) }
+  50% { transform: translateX(0%) scale(1.02); opacity:1; filter: blur(18px) saturate(160%) contrast(120%) }
+  90% { opacity:1; filter: blur(34px) saturate(130%) contrast(100%) }
+  100% { transform: translateX(120%) scale(1.05); opacity:0 }
+}
+
+/* the pulled text */
+.phase-text{
+  position:relative;
+  z-index:110;
+  pointer-events:none;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  height:100%;
+  width:100%;
+}
+.phase-text #phaseLabel{
+  display:inline-block;
+  font-weight:900;
+  font-size: clamp(36px, 18vw, 160px);
+  letter-spacing: -0.02em;
+  color: white;
+  text-shadow: 0 30px 120px rgba(0,0,0,0.75);
+  transform-origin: left center; /* pulled from left */
+  will-change: transform, opacity, filter;
+  opacity:0;
+}
+
+/* label animation */
+@keyframes labelPullStretch {
+  0% {
+    transform: translateX(-140%) scaleX(3.2) skewX(-6deg);
+    opacity:0;
+    filter: blur(6px) brightness(1.2);
+  }
+  18% {
+    transform: translateX(-30%) scaleX(2.1) skewX(-4deg);
+    opacity:1;
+    filter: blur(3px) brightness(1.1);
+  }
+  45% {
+    transform: translateX(0%) scaleX(1) skewX(0deg);
+    opacity:1;
+    filter: blur(0px) brightness(1);
+  }
+  72% {
+    transform: translateX(40%) scaleX(1.8) skewX(6deg);
+    opacity:1;
+    filter: blur(3px) brightness(0.95);
+  }
+  100% {
+    transform: translateX(140%) scaleX(3.2) skewX(10deg);
+    opacity:0;
+    filter: blur(8px) brightness(0.85);
+  }
+}
+
+/* when overlay active, animate both cloud and label */
+.phase-overlay.playing .flame-cloud{
+  animation: flameSweep 1200ms cubic-bezier(.2,.9,.3,1) forwards;
+}
+.phase-overlay.playing .phase-text #phaseLabel{
+  animation: labelPullStretch 1200ms cubic-bezier(.2,.9,.3,1) forwards;
+}
+
+/* responsive tweaks */
+@media (max-width:600px){
+  .phase-text #phaseLabel{ font-size: clamp(26px, 28vw, 96px); }
+}

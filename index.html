@@ -1,0 +1,132 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Blackhole Pomodoro — Sound Options</title>
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <main class="app">
+    <header class="topbar" aria-hidden="false">
+      <h1>Blackhole Pomodoro</h1>
+
+      <div class="right-controls">
+        <div class="modes" role="tablist" aria-label="Timer modes">
+          <button class="mode active" data-min="25" id="mode-work" role="tab" aria-selected="true">Work</button>
+          <button class="mode" data-min="5" id="mode-break" role="tab" aria-selected="false">Short Break</button>
+          <button class="mode" data-min="15" id="mode-long" role="tab" aria-selected="false">Long Break</button>
+        </div>
+
+        <!-- settings icon -->
+        <button id="settingsBtn" class="icon-btn" aria-label="Settings" title="Settings">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+            <path d="M12 15.5A3.5 3.5 0 1 0 12 8.5a3.5 3.5 0 0 0 0 7z" fill="currentColor" opacity="0.95"/>
+            <path d="M19.4 13.2a7.1 7.1 0 0 0 0-2.4l2.1-1.6a.5.5 0 0 0 .12-.66l-2-3.46a.5.5 0 0 0-.6-.22l-2.5 1a7.2 7.2 0 0 0-2.1-1.2l-.38-2.65a.5.5 0 0 0-.5-.42h-4a.5.5 0 0 0-.5.42l-.38 2.65a7.2 7.2 0 0 0-2.1 1.2l-2.5-1a.5.5 0 0 0-.6.22L2.9 8.5a.5.5 0 0 0 .12.66l2.1 1.6a7.1 7.1 0 0 0 0 2.4l-2.1 1.6a.5.5 0 0 0-.12.66l2 3.46c.13.23.4.33.63.22l2.5-1c.66.5 1.38.9 2.1 1.2l.38 2.65c.05.26.27.42.5.42h4c.23 0 .45-.16.5-.42l.38-2.65c.73-.3 1.44-.7 2.1-1.2l2.5 1c.23.09.5.01.63-.22l2-3.46a.5.5 0 0 0-.12-.66l-2.1-1.6z" fill="currentColor" opacity="0.8"/>
+          </svg>
+        </button>
+      </div>
+    </header>
+
+    <section class="timer-wrap">
+      <div class="timer" id="timer" aria-live="polite" aria-atomic="true">
+        <!-- digits injected here -->
+      </div>
+    </section>
+
+    <nav class="controls">
+      <button id="startBtn" class="control">Start</button>
+      <button id="pauseBtn" class="control" disabled>Pause</button>
+      <button id="resetBtn" class="control">Reset</button>
+      <label class="compact">
+        <input type="checkbox" id="keepZero"/>
+        Leading zero
+      </label>
+    </nav>
+
+    <footer class="footer">
+      <small>Settings saved in localStorage • Esc to close settings</small>
+    </footer>
+  </main>
+
+  <!-- Settings modal -->
+  <div id="settingsOverlay" class="overlay hidden" role="dialog" aria-modal="true" aria-hidden="true" aria-labelledby="settingsTitle">
+    <div class="modal" role="document">
+      <header class="modal-header">
+        <h2 id="settingsTitle">Timer Settings</h2>
+        <button id="closeSettings" class="icon-close" aria-label="Close settings">&times;</button>
+      </header>
+
+      <form id="settingsForm" class="modal-body" novalidate>
+        <div class="field">
+          <label for="workInput">Focus session (minutes)</label>
+          <input type="number" id="workInput" name="work" min="1" max="999" inputmode="numeric" required />
+        </div>
+
+        <div class="field">
+          <label for="shortInput">Short Break (minutes)</label>
+          <input type="number" id="shortInput" name="short" min="1" max="999" inputmode="numeric" required />
+        </div>
+
+        <div class="field">
+          <label for="longInput">Long Break (minutes)</label>
+          <input type="number" id="longInput" name="long" min="1" max="999" inputmode="numeric" required />
+        </div>
+
+        <div class="field">
+          <label for="sessionsBeforeLong">Focus sessions before a long break</label>
+          <input type="number" id="sessionsBeforeLong" name="sessionsBeforeLong" min="1" max="99" inputmode="numeric" required />
+        </div>
+
+        <div class="field row">
+          <label for="autoStart">Auto-start next session</label>
+          <input type="checkbox" id="autoStart" name="autoStart" />
+        </div>
+
+        <div class="field row">
+          <label for="autoContinueBreak">Auto-continue when break ends</label>
+          <input type="checkbox" id="autoContinueBreak" name="autoContinueBreak" />
+        </div>
+
+        <div class="field row">
+          <label for="keepZeroModal">Leading zero</label>
+          <input type="checkbox" id="keepZeroModal" name="leadingZero" />
+        </div>
+
+        <!-- New: Sound selection -->
+        <fieldset class="field">
+          <legend style="color:var(--muted); font-size:13px; margin-bottom:6px;">Sound</legend>
+
+          <label class="radio-row">
+            <input type="radio" name="soundMode" value="none" id="soundNone" />
+            <span>No sound</span>
+          </label>
+
+          <label class="radio-row">
+            <input type="radio" name="soundMode" value="default" id="soundDefault" />
+            <span>Default sound (default-pomodoro)</span>
+          </label>
+
+          <label class="radio-row">
+            <input type="radio" name="soundMode" value="voice" id="soundVoice" />
+            <span>Voice sounds (begin / end)</span>
+          </label>
+        </fieldset>
+
+        <div class="actions">
+          <button type="button" id="saveSettings" class="control primary">Save</button>
+          <button type="button" id="cancelSettings" class="control">Cancel</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- Phase transition overlay (flame cloud + pulled text) -->
+  <div id="phaseOverlay" class="phase-overlay hidden" aria-hidden="true" role="status" aria-live="polite">
+    <div class="flame-cloud" aria-hidden="true"></div>
+    <div class="phase-text" aria-hidden="true"><span id="phaseLabel"></span></div>
+  </div>
+
+  <script src="script.js"></script>
+</body>
+</html>
