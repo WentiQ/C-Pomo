@@ -3,18 +3,17 @@
   --panel:#0b0b0d;
   --muted:#9b9ba3;
   --accent:#9b59ff;
+  --card:#0f0f11;
 }
 
 /* Basic reset */
 *{box-sizing:border-box}
-html,body{height:100%;margin:0;background:radial-gradient(1200px 600px at 10% 10%, rgba(155,89,255,0.06), transparent 8%), var(--bg);color:#fff;font-family:Inter, system-ui, Arial;-webkit-font-smoothing:antialiased}
+html,body{height:100%;margin:0;background:radial-gradient(1200px 600px at 10% 10%, rgba(155,89,255,0.04), transparent 8%), var(--bg);color:#fff;font-family:Inter, system-ui, Arial;-webkit-font-smoothing:antialiased}
 
 /* layout */
 .app{min-height:100vh;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:28px;gap:28px}
 .topbar{width:100%;max-width:1200px;display:flex;justify-content:space-between;align-items:center;padding:6px 12px;color:var(--muted)}
 .topbar h1{margin:0;font-size:14px;color:var(--muted)}
-
-/* right side (modes + settings) */
 .right-controls{display:flex;align-items:center;gap:12px}
 .modes{display:flex;gap:8px}
 .mode{background:transparent;color:var(--muted);border:1px solid rgba(255,255,255,0.04);padding:6px 10px;border-radius:10px;font-size:13px;cursor:pointer;transition:all .22s ease}
@@ -62,6 +61,15 @@ html,body{height:100%;margin:0;background:radial-gradient(1200px 600px at 10% 10
   100% { transform: translateZ(0) scaleY(1) scaleX(1) translateY(0); filter: blur(0px); }
 }
 .digit.stretch { animation: rubberStretchY 640ms cubic-bezier(.2,.85,.3,1); text-shadow: 0 80px 200px rgba(0,0,0,0.85); }
+
+/* pull-up: next digit lifts upward then bounces back down */
+@keyframes pullUp {
+  0% { transform: translateY(0) translateZ(0) scale(1); filter: blur(0px); }
+  20% { transform: translateY(-48%) translateZ(-24px) scale(1.04); filter: blur(1.8px); }
+  46% { transform: translateY(10%) translateZ(-6px) scale(0.98); filter: blur(.9px); }
+  78% { transform: translateY(-3%) translateZ(0) scale(1.02); filter: blur(.3px); }
+  100% { transform: translateY(0) translateZ(0) scale(1); filter: blur(0px); }
+}
 .digit.pull-up { animation: pullUp 640ms cubic-bezier(.2,.85,.3,1); }
 
 /* controls */
@@ -196,5 +204,18 @@ html,body{height:100%;margin:0;background:radial-gradient(1200px 600px at 10% 10
 
 /* responsive tweaks */
 @media (max-width:600px){
+  .topbar h1{display:none}
+  .mode{padding:6px 8px;font-size:12px}
+  .digit{font-size: calc(26vw + 3vh)}
+  .colon{font-size: calc(12vw + 2vh)}
   .phase-text #phaseLabel{ font-size: clamp(26px, 28vw, 96px); }
+}
+
+#analyticsBtn {
+  background: #0ff;
+  color: #000;
+  font-weight: bold;
+}
+#analyticsBtn:hover {
+  background: #0cc;
 }

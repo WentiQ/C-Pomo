@@ -1,0 +1,575 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Pomodoro — Analytics</title>
+
+  <!-- Chart.js (CDN) -->
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
+  <style>
+    :root{
+      --bg:#050507; --panel:#0b0b0d; --muted:#9b9ba3; --accent:#9b59ff;
+      --card:#0f0f11; --glass: rgba(255,255,255,0.03);
+    }
+    *{box-sizing:border-box}
+    html,body{height:100%;margin:0;background:radial-gradient(1200px 600px at 10% 10%, rgba(155,89,255,0.04), transparent 8%), var(--bg);color:#fff;font-family:Inter, system-ui, Arial;-webkit-font-smoothing:antialiased}
+    .wrap{max-width:1200px;margin:28px auto;padding:20px;display:flex;flex-direction:column;gap:18px}
+    header{display:flex;align-items:center;justify-content:space-between;gap:12px}
+    header h1{font-size:18px;margin:0;color:var(--muted)}
+    .top-actions{display:flex;gap:8px;align-items:center}
+    button, .btn{background:linear-gradient(180deg, rgba(255,255,255,0.03), rgba(255,255,255,0.01));border:1px solid rgba(255,255,255,0.04);color:var(--muted);padding:8px 12px;border-radius:10px;cursor:pointer}
+    .btn.primary{background:linear-gradient(90deg,var(--accent), #6b3fd0); color:white; border:none; box-shadow:0 10px 30px rgba(107,63,208,0.12)}
+    .grid{display:grid;grid-template-columns:repeat(12,1fr);gap:14px}
+    .card{background:linear-gradient(180deg, rgba(11,11,13,0.98), rgba(18,18,20,0.98));border-radius:12px;padding:14px;border:1px solid rgba(255,255,255,0.03);box-shadow:0 8px 30px rgba(0,0,0,0.6)}
+    .kpis{grid-column:1 / -1;display:grid;grid-template-columns:repeat(4,1fr);gap:12px}
+    .kpi{padding:12px;background:var(--card);border-radius:10px;display:flex;flex-direction:column;gap:6px}
+    .kpi .num{font-weight:800;font-size:20px}
+    .charts{display:grid;grid-template-columns:repeat(2,1fr);gap:12px}
+    canvas{background:transparent;border-radius:8px;padding:8px}
+    .heatmap{padding:12px;display:flex;flex-direction:column;gap:12px}
+    .heat-grid{display:grid;grid-template-columns:repeat(7,1fr);gap:6px}
+    .heat-cell{height:38px;border-radius:6px;display:flex;align-items:center;justify-content:center;font-size:12px;color:rgba(255,255,255,0.95)}
+    .table-wrap{overflow:auto}
+    table{width:100%;border-collapse:collapse;font-size:13px}
+    th,td{padding:10px;border-bottom:1px solid rgba(255,255,255,0.03);text-align:left}
+    .muted{color:var(--muted);font-size:13px}
+    .controls-row{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+    .small{font-size:12px;padding:6px 8px;border-radius:8px}
+    input[type="file"]{display:none}
+    .center{display:flex;align-items:center;gap:8px}
+    @media (max-width:900px){ .kpis{grid-template-columns:repeat(2,1fr)} .charts{grid-template-columns:1fr} }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <header>
+      <h1>Pomodoro Analytics</h1>
+      <div class="top-actions">
+        <button id="btnSample" class="btn">Generate sample data</button>
+        <button id="btnExport" class="btn">Export CSV</button>
+        <button id="btnClear" class="btn">Clear history</button>
+        <label class="btn">
+          Import JSON
+          <input id="importFile" type="file" accept="application/json" />
+        </label>
+        <a href="index.html" class="btn">Back to Timer</a>
+      </div>
+    </header>
+
+    <!-- KPIs -->
+    <section class="grid">
+      <div class="kpis card">
+        <div class="kpi">
+          <div class="muted">Total Focus Sessions</div>
+          <div id="kTotalSessions" class="num">0</div>
+          <div class="muted small">Focus sessions completed</div>
+        </div>
+        <div class="kpi">
+          <div class="muted">Total Focus Time</div>
+          <div id="kTotalTime" class="num">0m</div>
+          <div class="muted small">Sum of focused minutes</div>
+        </div>
+        <div class="kpi">
+          <div class="muted">Average Focus</div>
+          <div id="kAvgFocus" class="num">0m</div>
+          <div class="muted small">Average focus session length</div>
+        </div>
+        <div class="kpi">
+          <div class="muted">Best Streak</div>
+          <div id="kBestStreak" class="num">0</div>
+          <div class="muted small">Longest consecutive focus days</div>
+        </div>
+
+      </div>
+
+      <!-- Charts -->
+      <div class="card charts" style="grid-column:1 / -1">
+        <div style="display:flex;flex-direction:column;gap:10px">
+          <div class="muted">Sessions per day (last 30 days)</div>
+          <canvas id="sessionsLine"></canvas>
+        </div>
+        <div style="display:flex;flex-direction:column;gap:10px">
+          <div class="muted">Focus minutes per day (last 30 days)</div>
+          <canvas id="minutesBar"></canvas>
+        </div>
+
+        <div style="display:flex;flex-direction:column;gap:10px;margin-top:14px">
+          <div class="muted">Session type distribution</div>
+          <canvas id="typePie" style="max-width:360px"></canvas>
+        </div>
+
+        <div style="display:flex;flex-direction:column;gap:10px;margin-top:14px">
+          <div class="muted">Heatmap — focus minutes (last 30 days)</div>
+          <div class="heatmap card" style="background:transparent;padding:8px;">
+            <div id="heatLegend" class="muted" style="font-size:12px;margin-bottom:8px">0 min — 0 — 0+ min</div>
+            <div id="heatgrid" class="heat-grid"></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Table -->
+      <div class="card" style="grid-column:1 / -1">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
+          <div class="muted">Recent Sessions</div>
+          <div class="controls-row">
+            <input id="searchInput" placeholder="Search mode/date/duration" style="padding:8px;border-radius:8px;border:1px solid rgba(255,255,255,0.03);background:transparent;color:white" />
+            <button id="btnExportCSV" class="btn small">Export CSV</button>
+            <button id="btnDeleteAll" class="btn small">Delete Selected</button>
+          </div>
+        </div>
+
+        <div class="table-wrap">
+          <table id="sessionTable">
+            <thead>
+              <tr>
+                <th><input type="checkbox" id="checkAll" /></th>
+                <th>Date</th>
+                <th>Mode</th>
+                <th>Duration</th>
+                <th>Auto</th>
+                <th>Start</th>
+                <th>End</th>
+                <th>Actions</th>
+              </tr>
+            </thead>
+            <tbody id="tableBody"></tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+  </div>
+
+<script>
+/*
+  Analytics page script
+  Storage key: 'bh_pomodoro_history'
+  Expected session entry:
+    {
+      id: string,
+      mode: 'work' | 'short' | 'long',
+      start: <ms epoch>,
+      end: <ms epoch>,
+      durationSec: <integer>,
+      autoStarted: <boolean>,
+      date: 'YYYY-MM-DD'
+    }
+*/
+
+(() => {
+  // helpers
+  const KEY = 'bh_pomodoro_history';
+  const $ = sel => document.querySelector(sel);
+  const $$ = sel => Array.from(document.querySelectorAll(sel));
+
+  // DOM
+  const sessionsLineCtx = document.getElementById('sessionsLine').getContext('2d');
+  const minutesBarCtx = document.getElementById('minutesBar').getContext('2d');
+  const typePieCtx = document.getElementById('typePie').getContext('2d');
+
+  const kTotalSessions = $('#kTotalSessions');
+  const kTotalTime = $('#kTotalTime');
+  const kAvgFocus = $('#kAvgFocus');
+  const kBestStreak = $('#kBestStreak');
+
+  const heatgrid = $('#heatgrid');
+  const heatLegend = $('#heatLegend');
+
+  const tableBody = $('#tableBody');
+  const searchInput = $('#searchInput');
+  const btnSample = $('#btnSample');
+  const btnExport = $('#btnExport');
+  const btnClear = $('#btnClear');
+  const importFile = $('#importFile');
+  const btnExportCSV = $('#btnExportCSV');
+  const btnDeleteAll = $('#btnDeleteAll');
+  const checkAll = $('#checkAll');
+
+  // Chart instances
+  let sessionsLineChart = null;
+  let minutesBarChart = null;
+  let typePieChart = null;
+
+  // Read history
+  function loadHistory(){
+    try{
+      const raw = localStorage.getItem(KEY);
+      if(!raw) return [];
+      const arr = JSON.parse(raw);
+      if(!Array.isArray(arr)) return [];
+      return arr.map(a => ({...a}));
+    }catch(e){
+      return [];
+    }
+  }
+  function saveHistory(arr){
+    localStorage.setItem(KEY, JSON.stringify(arr));
+  }
+
+  // Expose logSession for main app integration (also used by sample generator)
+  function logSession(entry){
+    const history = loadHistory();
+    history.push(entry);
+    saveHistory(history);
+    renderAll();
+  }
+  window.logSession = logSession; // accessible globally
+
+  // Utilities
+  function formatMs(ms){ // returns 'HH:MM:SS'
+    const date = new Date(ms);
+    return date.toLocaleString();
+  }
+  function formatHHMM(totalSeconds){
+    const h = Math.floor(totalSeconds / 3600);
+    const m = Math.floor((totalSeconds % 3600) / 60);
+    const s = totalSeconds % 60;
+    if(h>0) return `${h}h ${m}m`;
+    if(m>0) return `${m}m ${s}s`;
+    return `${s}s`;
+  }
+  function toDateISO(ms){ return new Date(ms).toISOString().slice(0,10); }
+
+  // Compute metrics and derived series (last N days)
+  function computeMetrics(history, days = 30){
+    // normalize
+    const sessions = history.slice().sort((a,b)=>a.end - b.end);
+    // KPIs
+    const focusSessions = sessions.filter(s => s.mode === 'work');
+    const totalFocusSec = focusSessions.reduce((acc,s)=>acc + (s.durationSec||0),0);
+    const avgFocusSec = focusSessions.length ? Math.round(totalFocusSec / focusSessions.length) : 0;
+
+    // last N days array
+    const labels = [];
+    const now = new Date();
+    now.setHours(0,0,0,0);
+    for(let i = days-1; i>=0; i--){
+      const d = new Date(now.getTime() - i*24*3600*1000);
+      labels.push(d.toISOString().slice(0,10));
+    }
+
+    const perDayCounts = labels.map(ld => 0);
+    const perDayFocusMins = labels.map(ld => 0);
+
+    sessions.forEach(s=>{
+      const day = s.date || toDateISO(s.end);
+      const idx = labels.indexOf(day);
+      if(idx>=0){
+        perDayCounts[idx] += 1;
+        if(s.mode === 'work') perDayFocusMins[idx] += Math.round((s.durationSec||0)/60);
+      }
+    });
+
+    // distribution
+    const byType = { work:0, short:0, long:0 };
+    sessions.forEach(s => { byType[s.mode] = (byType[s.mode] || 0) + 1 });
+
+    // streaks (consecutive days with at least one focus session)
+    const focusByDay = {};
+    sessions.filter(s=>s.mode==='work').forEach(s => {
+      const d = s.date || toDateISO(s.end);
+      focusByDay[d] = (focusByDay[d] || 0) + 1;
+    });
+    // compute streaks over calendar days (consider last 365 days)
+    const streaks = computeStreaks(focusByDay);
+
+    return {
+      sessions, focusSessions, totalFocusSec, avgFocusSec,
+      labels, perDayCounts, perDayFocusMins, byType, streaks
+    };
+  }
+
+  // compute streaks from map date->count
+  function computeStreaks(focusByDay){
+    // build a sorted list of dates that had focus
+    const days = Object.keys(focusByDay).sort();
+    if(days.length === 0) return { current:0, best:0, all:[] };
+
+    // current streak: count backwards from today while dates contiguous
+    const todayISO = new Date().toISOString().slice(0,10);
+    let cur = 0;
+    let d = new Date(todayISO);
+    while(true){
+      const iso = d.toISOString().slice(0,10);
+      if(focusByDay[iso]) { cur++; d.setDate(d.getDate()-1); } else break;
+    }
+
+    // best streak: scan consecutive days
+    const allDatesSet = new Set(Object.keys(focusByDay));
+    let best = 0;
+    let current = 0;
+    // find earliest date in keys
+    const minDate = new Date(Math.min(...Array.from(allDatesSet).map(x=>new Date(x))));
+    const maxDate = new Date(Math.max(...Array.from(allDatesSet).map(x=>new Date(x))));
+    // iterate from min to max
+    const daysList = [];
+    for(let d = new Date(minDate); d<=maxDate; d.setDate(d.getDate()+1)){
+      const iso = d.toISOString().slice(0,10);
+      if(allDatesSet.has(iso)) { current++; } else { if(current>0) daysList.push(current); best = Math.max(best, current); current = 0; }
+    }
+    best = Math.max(best, current);
+    return { current:cur, best:best, all:daysList };
+  }
+
+  // Chart rendering
+  function renderCharts(metrics){
+    // sessions line
+    const labels = metrics.labels;
+    if(sessionsLineChart) sessionsLineChart.destroy();
+    sessionsLineChart = new Chart(sessionsLineCtx, {
+      type: 'line',
+      data: { labels, datasets: [{ label:'Sessions', data: metrics.perDayCounts, fill:true, tension:0.25, backgroundColor:'rgba(155,89,255,0.12)', borderColor:'rgba(155,89,255,0.95)', pointRadius:2 }]},
+      options: { responsive:true, plugins:{legend:{display:false}} , scales:{x:{grid:{display:false}, ticks:{color:'#bdbdbd'}}, y:{ticks:{color:'#bdbdbd'}, beginAtZero:true}} }
+    });
+
+    // minutes bar
+    if(minutesBarChart) minutesBarChart.destroy();
+    minutesBarChart = new Chart(minutesBarCtx, {
+      type: 'bar',
+      data: { labels, datasets: [{ label:'Focus minutes', data: metrics.perDayFocusMins, backgroundColor:'rgba(255,120,60,0.9)' }]},
+      options: { responsive:true, plugins:{legend:{display:false}}, scales:{x:{grid:{display:false}, ticks:{color:'#bdbdbd'}}, y:{ticks:{color:'#bdbdbd'}, beginAtZero:true}} }
+    });
+
+    // pie distribution
+    if(typePieChart) typePieChart.destroy();
+    typePieChart = new Chart(typePieCtx, {
+      type:'pie',
+      data:{ labels:['Focus','Short Break','Long Break'], datasets:[{ data:[metrics.byType.work||0, metrics.byType.short||0, metrics.byType.long||0], backgroundColor:['#9b59ff','#00c2a8','#ff7a3a'] }]},
+      options:{ responsive:true, plugins:{legend:{position:'bottom', labels:{color:'#bdbdbd'}}} }
+    });
+  }
+
+  // Heatmap (simple)
+  function renderHeatmap(metrics){
+    // clear previous
+    heatgrid.innerHTML = '';
+    // metrics.labels is last N days ascending (old -> new)
+    const values = metrics.perDayFocusMins.slice(); // minutes
+    // compute range
+    const max = Math.max(...values, 0);
+    const min = 0;
+    // color scale from dark gray -> orange
+    function colorFor(v){
+      if(v<=0) return 'rgba(255,255,255,0.02)';
+      const t = Math.min(1, v / Math.max(1, max));
+      // interpolate from light-orange to deep-orange
+      const from = [40,40,40]; // dark
+      const to = [255,110,30];
+      const r = Math.round(from[0] + (to[0]-from[0])*t);
+      const g = Math.round(from[1] + (to[1]-from[1])*t);
+      const b = Math.round(from[2] + (to[2]-from[2])*t);
+      return `rgb(${r},${g},${b})`;
+    }
+
+    // show cells (7 columns)
+    metrics.labels.forEach((label, idx) => {
+      const val = values[idx];
+      const cell = document.createElement('div');
+      cell.className = 'heat-cell';
+      cell.style.background = colorFor(val);
+      cell.title = `${label}: ${val} min`;
+      cell.textContent = val>0 ? `${val}m` : '';
+      heatgrid.appendChild(cell);
+    });
+
+    heatLegend.textContent = `0 min — max ${max} min (last ${metrics.labels.length} days)`;
+  }
+
+  // Table rendering with simple search & selection
+  function renderTable(metrics){
+    const sessions = metrics.sessions.slice().reverse(); // newest first
+    const q = searchInput.value.trim().toLowerCase();
+    tableBody.innerHTML = '';
+    for(let s of sessions){
+      const rowText = `${s.date} ${s.mode} ${formatHHMM(s.durationSec)} ${s.autoStarted?'auto':''}`.toLowerCase();
+      if(q && !rowText.includes(q)) continue;
+      const tr = document.createElement('tr');
+      tr.innerHTML = `
+        <td><input type="checkbox" class="row-check" data-id="${s.id}" /></td>
+        <td>${s.date}</td>
+        <td>${s.mode}</td>
+        <td>${formatHHMM(s.durationSec)}</td>
+        <td>${s.autoStarted ? 'Yes':'No'}</td>
+        <td>${new Date(s.start).toLocaleTimeString()}</td>
+        <td>${new Date(s.end).toLocaleTimeString()}</td>
+        <td><button class="small btn" data-action="delete" data-id="${s.id}">Delete</button></td>
+      `;
+      tableBody.appendChild(tr);
+    }
+  }
+
+  // KPIs rendering
+  function renderKPIs(metrics){
+    kTotalSessions.textContent = metrics.focusSessions.length;
+    kTotalTime.textContent = formatHHMM(metrics.totalFocusSec);
+    kAvgFocus.textContent = formatHHMM(metrics.avgFocusSec);
+    kBestStreak.textContent = metrics.streaks.best;
+  }
+
+  // Render everything
+  function renderAll(){
+    const history = loadHistory();
+    const metrics = computeMetrics(history, 30);
+    renderKPIs(metrics);
+    renderCharts(metrics);
+    renderHeatmap(metrics);
+    renderTable(metrics);
+  }
+
+  // Export CSV of all sessions
+  function exportCSV(){
+    const history = loadHistory();
+    if(history.length === 0) return alert('No history to export.');
+    const header = ['id','date','mode','durationSec','autoStarted','startISO','endISO'];
+    const lines = [header.join(',')];
+    for(const s of history){
+      lines.push([s.id, s.date, s.mode, s.durationSec, s.autoStarted ? '1' : '0', new Date(s.start).toISOString(), new Date(s.end).toISOString()].map(csvEscape).join(','));
+    }
+    const blob = new Blob([lines.join('\n')], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `pomodoro_history_${new Date().toISOString().slice(0,10)}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+  }
+  function csvEscape(v){
+    if(v===null || v===undefined) return '';
+    v = String(v);
+    if(v.includes(',') || v.includes('"')) return `"${v.replace(/"/g,'""')}"`;
+    return v;
+  }
+
+  // Clear history with confirm
+  function clearHistory(){
+    if(!confirm('Delete all analytics history? This cannot be undone.')) return;
+    saveHistory([]);
+    renderAll();
+  }
+
+  // Import JSON
+  function importJSON(file){
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      try {
+        const json = JSON.parse(e.target.result);
+        if(!Array.isArray(json)) return alert('Invalid JSON — expected an array of session objects.');
+        // basic validation for entries
+        const ok = json.every(it => it && it.id && it.mode && it.start && it.end && it.durationSec);
+        if(!ok) return alert('JSON items missing required fields. Expected objects with id, mode, start, end, durationSec.');
+        // append
+        const hist = loadHistory().concat(json);
+        saveHistory(hist);
+        renderAll();
+        alert('Imported ' + json.length + ' sessions.');
+      } catch(err) {
+        alert('Import failed: ' + err.message);
+      }
+    };
+    reader.readAsText(file);
+  }
+
+  // Delete selected rows
+  function deleteSelected(){
+    const checks = Array.from(document.querySelectorAll('.row-check:checked')).map(i => i.dataset.id);
+    if(checks.length === 0) return alert('No sessions selected');
+    if(!confirm(`Delete ${checks.length} selected sessions?`)) return;
+    let hist = loadHistory();
+    hist = hist.filter(s => !checks.includes(s.id));
+    saveHistory(hist);
+    renderAll();
+  }
+
+  // Generate realistic sample data (dev)
+  function generateSample(days = 45){
+    const now = new Date(); now.setHours(12,0,0,0);
+    const arr = [];
+    for(let d=days-1; d>=0; d--){
+      const date = new Date(now.getTime() - d*24*3600*1000);
+      const iso = date.toISOString().slice(0,10);
+      // random decide whether day had focus sessions (probability ~ 0.7)
+      if(Math.random() < 0.72){
+        const sessionsCount = 1 + (Math.random()<0.4?1:0); // 1 or 2
+        for(let s=0; s<sessionsCount; s++){
+          // create a focus session 25 +/- random minutes
+          const base = 25;
+          const duration = Math.max(5, Math.round((base + (Math.random()*12-6)) * 60)); // seconds
+          const start = new Date(date.getTime() + (9 + Math.random()*8)*3600*1000 + s*3600*1000).getTime();
+          const end = start + duration*1000;
+          arr.push({
+            id: 's_' + Math.random().toString(36).slice(2,9),
+            mode: 'work',
+            start, end, durationSec: duration, autoStarted: Math.random() < 0.25, date: iso
+          });
+          // short break after it sometimes
+          if(Math.random() < 0.7){
+            const bd = Math.round((5 + Math.random()*3) * 60);
+            const bs = end + 1000;
+            const be = bs + bd*1000;
+            arr.push({ id:'s_'+Math.random().toString(36).slice(2,9), mode:'short', start:bs, end:be, durationSec:bd, autoStarted:false, date:iso });
+          }
+        }
+        // occasional long break
+        if(Math.random() < 0.08){
+          const dstart = new Date(date.getTime() + 16*3600*1000).getTime();
+          const dur = Math.round((15 + Math.random()*4)*60);
+          arr.push({ id:'s_'+Math.random().toString(36).slice(2,9), mode:'long', start:dstart, end:dstart+dur*1000, durationSec:dur, autoStarted:false, date:iso });
+        }
+      }
+    }
+    // merge with existing
+    const hist = loadHistory().concat(arr);
+    saveHistory(hist);
+    renderAll();
+    alert('Generated ' + arr.length + ' sample sessions.');
+  }
+
+  // Button wiring
+  btnSample.addEventListener('click', () => generateSample(45));
+  btnExport.addEventListener('click', () => exportCSV());
+  btnClear.addEventListener('click', () => clearHistory());
+  importFile.addEventListener('change', (e) => {
+    const f = e.target.files[0];
+    if(f) importJSON(f);
+    importFile.value = '';
+  });
+  btnExportCSV.addEventListener('click', () => exportCSV());
+  btnDeleteAll.addEventListener('click', () => deleteSelected());
+  checkAll.addEventListener('change', (e) => {
+    const checks = document.querySelectorAll('.row-check');
+    checks.forEach(c => c.checked = checkAll.checked);
+  });
+
+  // table delegation for per-row delete
+  document.addEventListener('click', (e) => {
+    const btn = e.target.closest('button[data-action="delete"]');
+    if(!btn) return;
+    const id = btn.dataset.id;
+    if(!confirm('Delete this session?')) return;
+    let hist = loadHistory();
+    hist = hist.filter(s => s.id !== id);
+    saveHistory(hist);
+    renderAll();
+  });
+
+  searchInput.addEventListener('input', () => renderAll());
+
+  // initial render
+  renderAll();
+
+  // expose some helper functions on window for debugging / main-app integration
+  window.pomodoroAnalytics = {
+    loadHistory,
+    saveHistory,
+    logSession,
+    exportCSV,
+    computeMetrics
+  };
+
+  // Make initial hint visible in console
+  console.log('Analytics loaded. Use window.logSession(...) to add session entries programmatically.');
+})();
+</script>
+</body>
+</html>
