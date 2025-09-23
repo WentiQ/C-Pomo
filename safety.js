@@ -73,16 +73,12 @@
 
   // runtime state
   let settings = loadSettings();
-  // ensure settings.work/short/long are Numbers (can be decimals, including 0)
-  settings.work = Number(settings.work);
-  settings.short = Number(settings.short);
-  settings.long = Number(settings.long);
-  let totalSeconds = Math.max(0, Number(settings.work)) * 60;
+  let totalSeconds = settings.work * 60;
   let remaining = totalSeconds;
   let ticker = null;
   let running = false;
   let lastRendered = '';
-  let focusCount = Number(settings._focusCount) || 0;
+  let focusCount = settings._focusCount || 0;
 
   // session logging helpers
   let sessionStartMs = null;
@@ -98,17 +94,16 @@
       const raw = localStorage.getItem(LS_KEY);
       if (!raw) return { ...DEFAULTS };
       const parsed = JSON.parse(raw);
-      // Use explicit checks so 0 is preserved (not treated as falsy)
       return {
-        work: parsed.work !== undefined ? Number(parsed.work) : DEFAULTS.work,
-        short: parsed.short !== undefined ? Number(parsed.short) : DEFAULTS.short,
-        long: parsed.long !== undefined ? Number(parsed.long) : DEFAULTS.long,
-        leadingZero: parsed.leadingZero === false ? false : DEFAULTS.leadingZero,
-        autoStartNext: parsed.autoStartNext === true,
-        autoContinueAfterBreak: parsed.autoContinueAfterBreak === true,
-        sessionsBeforeLong: parsed.sessionsBeforeLong !== undefined ? Number(parsed.sessionsBeforeLong) : DEFAULTS.sessionsBeforeLong,
+        work: Number(parsed.work) || DEFAULTS.work,
+        short: Number(parsed.short) || DEFAULTS.short,
+        long: Number(parsed.long) || DEFAULTS.long,
+        leadingZero: parsed.leadingZero === false ? false : true,
+        autoStartNext: !!parsed.autoStartNext,
+        autoContinueAfterBreak: !!parsed.autoContinueAfterBreak,
+        sessionsBeforeLong: Number(parsed.sessionsBeforeLong) || DEFAULTS.sessionsBeforeLong,
         soundMode: parsed.soundMode || DEFAULTS.soundMode,
-        _focusCount: parsed._focusCount !== undefined ? Number(parsed._focusCount) : 0
+        _focusCount: Number(parsed._focusCount) || 0
       };
     } catch (e) {
       return { ...DEFAULTS };
@@ -121,7 +116,7 @@
   }
 
   function applySettings(s) {
-    // update mode buttons (store decimal minutes)
+    // update mode buttons
     const btnWork = document.getElementById('mode-work');
     const btnShort = document.getElementById('mode-break');
     const btnLong = document.getElementById('mode-long');
@@ -137,10 +132,10 @@
     if (soundDefault) soundDefault.checked = s.soundMode === 'default';
     if (soundVoice) soundVoice.checked = s.soundMode === 'voice';
 
-    // update timer lengths for active mode (allow zero and decimals)
+    // update timer lengths for active mode
     const active = modes.find(m => m.classList.contains('active'));
-    const selectedMinutes = active ? parseFloat(active.dataset.min) : Number(s.work);
-    totalSeconds = Math.max(0, Number(selectedMinutes)) * 60;
+    const selectedMinutes = active ? Number(active.dataset.min) : s.work;
+    totalSeconds = Math.max(1, Number(selectedMinutes)) * 60;
     remaining = totalSeconds;
 
     if (Number.isFinite(s._focusCount)) focusCount = Number(s._focusCount) || 0;
@@ -343,9 +338,8 @@
       elmOrId.classList.add('active');
     }
     const active = modes.find(m => m.classList.contains('active'));
-    const mins = active ? parseFloat(active.dataset.min) : Number(minutes);
-    // allow zero and decimals (convert minutes to seconds)
-    totalSeconds = Math.max(0, Number(mins)) * 60;
+    const mins = active ? Number(active.dataset.min) : Number(minutes);
+    totalSeconds = Math.max(1, Number(mins)) * 60;
     remaining = totalSeconds;
     initialRender();
   }
@@ -473,11 +467,10 @@
      =========== */
   function openSettings() {
     const s = loadSettings();
-    // ensure values are shown with up to two decimals in inputs
-    workInput.value = (s.work !== undefined && !Number.isNaN(Number(s.work))) ? Number(s.work).toFixed( (Math.round(s.work*100) % 100) ? (s.work % 1 === 0 ? 0 : (s.work*100 % 100 ? 2 : 1)) : 0 ) : s.work;
-    shortInput.value = (s.short !== undefined && !Number.isNaN(Number(s.short))) ? Number(s.short) : s.short;
-    longInput.value = (s.long !== undefined && !Number.isNaN(Number(s.long))) ? Number(s.long) : s.long;
-    sessionsBeforeLongInput.value = s.sessionsBeforeLong !== undefined ? s.sessionsBeforeLong : DEFAULTS.sessionsBeforeLong;
+    workInput.value = s.work;
+    shortInput.value = s.short;
+    longInput.value = s.long;
+    sessionsBeforeLongInput.value = s.sessionsBeforeLong || DEFAULTS.sessionsBeforeLong;
     autoStartInput.checked = !!s.autoStartNext;
     autoContinueBreakInput.checked = !!s.autoContinueAfterBreak;
     keepZeroModal.checked = !!s.leadingZero;
@@ -497,35 +490,26 @@
     settingsBtn.focus();
   }
 
-  // helper: validate decimal minutes (0..999, up to 2 decimals)
-  function validMinutesValue(v) {
-    if (!Number.isFinite(v)) return false;
-    if (v < 0 || v > 999) return false;
-    // allow up to 2 decimal places
-    const rounded = Math.round(v * 100);
-    return Math.abs(rounded - v * 100) < 0.000001;
-  }
-
   // save settings
   saveSettings.addEventListener('click', () => {
     const w = Number(workInput.value);
     const s = Number(shortInput.value);
     const l = Number(longInput.value);
-    const sessionsBeforeLong = Number(sessionsBeforeLongInput.value);
+    const sessionsBeforeLong = Number(sessionsBeforeLongInput.value) || DEFAULTS.sessionsBeforeLong;
     const autoStartNext = !!autoStartInput.checked;
     const autoContinueAfterBreak = !!autoContinueBreakInput.checked;
     const leading = !!keepZeroModal.checked;
     const chosenSoundMode = soundNone && soundNone.checked ? 'none' : (soundVoice && soundVoice.checked ? 'voice' : 'default');
 
-    if (!validMinutesValue(w)) return focusWarn(workInput);
-    if (!validMinutesValue(s)) return focusWarn(shortInput);
-    if (!validMinutesValue(l)) return focusWarn(longInput);
+    if (!Number.isFinite(w) || w < 1 || w > 999) return focusWarn(workInput);
+    if (!Number.isFinite(s) || s < 1 || s > 999) return focusWarn(shortInput);
+    if (!Number.isFinite(l) || l < 1 || l > 999) return focusWarn(longInput);
     if (!Number.isFinite(sessionsBeforeLong) || sessionsBeforeLong < 1 || sessionsBeforeLong > 99) return focusWarn(sessionsBeforeLongInput);
 
     const newSettings = {
-      work: Number((Math.round(w*100)/100).toFixed(2)), // preserve up to 2 decimals
-      short: Number((Math.round(s*100)/100).toFixed(2)),
-      long: Number((Math.round(l*100)/100).toFixed(2)),
+      work: Math.floor(w),
+      short: Math.floor(s),
+      long: Math.floor(l),
       leadingZero: leading,
       autoStartNext: autoStartNext,
       autoContinueAfterBreak: autoContinueAfterBreak,
@@ -573,9 +557,7 @@
     resetBtn.addEventListener('click', () => { resetTimer(); focusCount = 0; });
 
     modes.forEach(mode => mode.addEventListener('click', () => {
-      // parse float so decimals are respected; if NaN fallback to DEFAULTS.work
-      const minVal = parseFloat(mode.dataset.min);
-      const min = Number.isFinite(minVal) ? minVal : DEFAULTS.work;
+      const min = parseInt(mode.dataset.min, 10) || 25;
       setMode(min, mode);
     }));
 
@@ -601,13 +583,11 @@
   }
 
   wire();
-  // Analytics page navigation (if present)
-  const analyticsBtn = document.getElementById('analyticsBtn');
-  if (analyticsBtn) {
-    analyticsBtn.addEventListener('click', () => {
-      window.location.href = 'analytics.html';
-    });
-  }
+  // Analytics page navigation
+  document.getElementById('analyticsBtn').addEventListener('click', () => {
+    window.location.href = 'analytics.html';
+  });
+
 
   /* ===========
      Expose tiny helpers for analytics page to use:

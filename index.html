@@ -59,17 +59,17 @@
       <form id="settingsForm" class="modal-body" novalidate>
         <div class="field">
           <label for="workInput">Focus session (minutes)</label>
-          <input type="number" id="workInput" name="work" min="1" max="999" inputmode="numeric" required />
+          <input type="number" id="workInput" name="work" step=0.01 min="0" max="999" inputmode="numeric" required />
         </div>
 
         <div class="field">
           <label for="shortInput">Short Break (minutes)</label>
-          <input type="number" id="shortInput" name="short" min="1" max="999" inputmode="numeric" required />
+          <input type="number" id="shortInput" name="short" step=0.01 min="0" max="999" inputmode="numeric" required />
         </div>
 
         <div class="field">
           <label for="longInput">Long Break (minutes)</label>
-          <input type="number" id="longInput" name="long" min="1" max="999" inputmode="numeric" required />
+          <input type="number" id="longInput" name="long" step=0.01 min="0" max="999" inputmode="numeric" required />
         </div>
 
         <div class="field">
