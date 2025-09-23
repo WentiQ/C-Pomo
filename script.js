@@ -1,619 +1,926 @@
-// Blackhole Pomodoro — complete script with settings, sounds, animations, analytics logging
-(() => {
-  /* ===========
-     DOM refs
-     =========== */
-  const timerEl = document.getElementById('timer');
-  const startBtn = document.getElementById('startBtn');
-  const pauseBtn = document.getElementById('pauseBtn');
-  const resetBtn = document.getElementById('resetBtn');
-  const modes = Array.from(document.querySelectorAll('.mode'));
-  const keepZeroCheckbox = document.getElementById('keepZero');
-
-  // settings UI
-  const settingsBtn = document.getElementById('settingsBtn');
-  const settingsOverlay = document.getElementById('settingsOverlay');
-  const closeSettings = document.getElementById('closeSettings');
-  const workInput = document.getElementById('workInput');
-  const shortInput = document.getElementById('shortInput');
-  const longInput = document.getElementById('longInput');
-  const sessionsBeforeLongInput = document.getElementById('sessionsBeforeLong');
-  const autoStartInput = document.getElementById('autoStart');
-  const autoContinueBreakInput = document.getElementById('autoContinueBreak');
-  const keepZeroModal = document.getElementById('keepZeroModal');
-  const saveSettings = document.getElementById('saveSettings');
-  const cancelSettings = document.getElementById('cancelSettings');
-  const soundNone = document.getElementById('soundNone');
-  const soundDefault = document.getElementById('soundDefault');
-  const soundVoice = document.getElementById('soundVoice');
-
-  // phase overlay
-  const phaseOverlay = document.getElementById('phaseOverlay');
-  const phaseLabelEl = document.getElementById('phaseLabel');
-
-  /* ===========
-     Defaults & state
-     =========== */
-  const DEFAULTS = {
-    work: 25,
-    short: 5,
-    long: 15,
-    leadingZero: true,
-    autoStartNext: false,
-    autoContinueAfterBreak: false,
-    sessionsBeforeLong: 4,
-    soundMode: 'default' // 'default' | 'voice' | 'none'
-  };
-
-  const LS_KEY = 'bh_pomodoro_settings_v3';
-  const HISTORY_KEY = 'bh_pomodoro_history';
-
-  // sound files mapping
-  const SOUND_FILES = {
-    'default': 'sounds/default-pomodoro.mp3',
-    'voice-focus-begin': 'sounds/voice-focus-begin.mp3',
-    'voice-focus-ended': 'sounds/voice-focus-ended.mp3',
-    'voice-long-break-begin': 'sounds/voice-long-break-begin.mp3',
-    'voice-long-break-ended': 'sounds/voice-long-break-ended.mp3',
-    'voice-short-break-begin': 'sounds/voice-short-break-begin.mp3',
-    'voice-short-break-ended': 'sounds/voice-short-break-ended.mp3'
-  };
-
-  // preloaded audio objects
-  const audioPool = {};
-  for (const [k,p] of Object.entries(SOUND_FILES)) {
+// script.js
+// Blackhole Pomodoro — preserved features + robust compact PiP & compact popup fixes
+(function(){
+  function init() {
     try {
-      const a = new Audio(p);
-      a.preload = 'auto';
-      audioPool[k] = a;
-    } catch (e) {
-      audioPool[k] = null;
-    }
-  }
+      /* ===========
+         DOM refs
+         =========== */
+      const timerEl = document.getElementById('timer');
+      const startBtn = document.getElementById('startBtn');
+      const pauseBtn = document.getElementById('pauseBtn');
+      const resetBtn = document.getElementById('resetBtn');
+      const modes = Array.from(document.querySelectorAll('.mode'));
+      const keepZeroCheckbox = document.getElementById('keepZero');
 
-  // runtime state
-  let settings = loadSettings();
-  // ensure settings.work/short/long are Numbers (can be decimals, including 0)
-  settings.work = Number(settings.work);
-  settings.short = Number(settings.short);
-  settings.long = Number(settings.long);
-  let totalSeconds = Math.max(0, Number(settings.work)) * 60;
-  let remaining = totalSeconds;
-  let ticker = null;
-  let running = false;
-  let lastRendered = '';
-  let focusCount = Number(settings._focusCount) || 0;
+      // settings UI
+      const settingsBtn = document.getElementById('settingsBtn');
+      const settingsOverlay = document.getElementById('settingsOverlay');
+      const closeSettings = document.getElementById('closeSettings');
+      const workInput = document.getElementById('workInput');
+      const shortInput = document.getElementById('shortInput');
+      const longInput = document.getElementById('longInput');
+      const sessionsBeforeLongInput = document.getElementById('sessionsBeforeLong');
+      const autoStartInput = document.getElementById('autoStart');
+      const autoContinueBreakInput = document.getElementById('autoContinueBreak');
+      const keepZeroModal = document.getElementById('keepZeroModal');
+      const saveSettings = document.getElementById('saveSettings');
+      const cancelSettings = document.getElementById('cancelSettings');
+      const soundNone = document.getElementById('soundNone');
+      const soundDefault = document.getElementById('soundDefault');
+      const soundVoice = document.getElementById('soundVoice');
 
-  // session logging helpers
-  let sessionStartMs = null;
-  let lastStartWasAuto = false;
+      // phase overlay
+      const phaseOverlay = document.getElementById('phaseOverlay');
+      const phaseLabelEl = document.getElementById('phaseLabel');
 
-  applySettings(settings);
+      // floating-related DOM (optional)
+      const floatingBtn = document.getElementById('floatingBtn');
+      const pipCanvas = document.getElementById('pipCanvas'); // should exist in your HTML
+      const pipVideo = document.getElementById('pipVideo');   // hidden video for PiP
+      const inpageFloating = document.getElementById('inpageFloating');
+      const floatModeEl = document.getElementById('floatMode');
+      const floatTimerEl = document.getElementById('floatTimer');
+      const floatStartBtn = document.getElementById('floatStart');
+      const floatPauseBtn = document.getElementById('floatPause');
+      const floatCloseBtn = document.getElementById('floatClose');
+      const analyticsBtn = document.getElementById('analyticsBtn');
 
-  /* ===========
-     Storage + Settings
-     =========== */
-  function loadSettings() {
-    try {
-      const raw = localStorage.getItem(LS_KEY);
-      if (!raw) return { ...DEFAULTS };
-      const parsed = JSON.parse(raw);
-      // Use explicit checks so 0 is preserved (not treated as falsy)
-      return {
-        work: parsed.work !== undefined ? Number(parsed.work) : DEFAULTS.work,
-        short: parsed.short !== undefined ? Number(parsed.short) : DEFAULTS.short,
-        long: parsed.long !== undefined ? Number(parsed.long) : DEFAULTS.long,
-        leadingZero: parsed.leadingZero === false ? false : DEFAULTS.leadingZero,
-        autoStartNext: parsed.autoStartNext === true,
-        autoContinueAfterBreak: parsed.autoContinueAfterBreak === true,
-        sessionsBeforeLong: parsed.sessionsBeforeLong !== undefined ? Number(parsed.sessionsBeforeLong) : DEFAULTS.sessionsBeforeLong,
-        soundMode: parsed.soundMode || DEFAULTS.soundMode,
-        _focusCount: parsed._focusCount !== undefined ? Number(parsed._focusCount) : 0
+      /* ===========
+         Defaults & state
+         =========== */
+      const DEFAULTS = {
+        work: 25,
+        short: 5,
+        long: 15,
+        leadingZero: true,
+        autoStartNext: false,
+        autoContinueAfterBreak: false,
+        sessionsBeforeLong: 4,
+        soundMode: 'default' // 'default' | 'voice' | 'none'
       };
-    } catch (e) {
-      return { ...DEFAULTS };
-    }
-  }
 
-  function saveSettingsToStorage(s) {
-    const stash = { ...s, _focusCount: focusCount };
-    localStorage.setItem(LS_KEY, JSON.stringify(stash));
-  }
+      const LS_KEY = 'bh_pomodoro_settings_v3';
+      const HISTORY_KEY = 'bh_pomodoro_history';
 
-  function applySettings(s) {
-    // update mode buttons (store decimal minutes)
-    const btnWork = document.getElementById('mode-work');
-    const btnShort = document.getElementById('mode-break');
-    const btnLong = document.getElementById('mode-long');
-
-    btnWork.dataset.min = String(s.work);
-    btnShort.dataset.min = String(s.short);
-    btnLong.dataset.min = String(s.long);
-
-    keepZeroCheckbox.checked = !!s.leadingZero;
-
-    // reflect sound radio
-    if (soundNone) soundNone.checked = s.soundMode === 'none';
-    if (soundDefault) soundDefault.checked = s.soundMode === 'default';
-    if (soundVoice) soundVoice.checked = s.soundMode === 'voice';
-
-    // update timer lengths for active mode (allow zero and decimals)
-    const active = modes.find(m => m.classList.contains('active'));
-    const selectedMinutes = active ? parseFloat(active.dataset.min) : Number(s.work);
-    totalSeconds = Math.max(0, Number(selectedMinutes)) * 60;
-    remaining = totalSeconds;
-
-    if (Number.isFinite(s._focusCount)) focusCount = Number(s._focusCount) || 0;
-
-    settings = { ...s };
-    saveSettingsToStorage(settings);
-
-    initialRender();
-  }
-
-  /* ===========
-     Sound helpers
-     =========== */
-  function safePlay(audioEl) {
-    try {
-      const clone = audioEl.cloneNode();
-      clone.preload = 'auto';
-      const p = clone.play();
-      if (p && p.catch) p.catch(() => { /* ignore autoplay rejection */ });
-    } catch (e) { /* ignore */ }
-  }
-
-  function playSoundForEvent(eventKey) {
-    if (!settings || settings.soundMode === 'none') return;
-    if (settings.soundMode === 'default') {
-      const a = audioPool['default'];
-      if (a) safePlay(a);
-      return;
-    }
-    if (settings.soundMode === 'voice') {
-      const map = {
-        'focus-begin': 'voice-focus-begin',
-        'focus-ended': 'voice-focus-ended',
-        'short-begin': 'voice-short-break-begin',
-        'short-ended': 'voice-short-break-ended',
-        'long-begin': 'voice-long-break-begin',
-        'long-ended': 'voice-long-break-ended'
+      // sound files mapping
+      const SOUND_FILES = {
+        'default': 'sounds/default-pomodoro.mp3',
+        'voice-focus-begin': 'sounds/voice-focus-begin.mp3',
+        'voice-focus-ended': 'sounds/voice-focus-ended.mp3',
+        'voice-long-break-begin': 'sounds/voice-long-break-begin.mp3',
+        'voice-long-break-ended': 'sounds/voice-long-break-ended.mp3',
+        'voice-short-break-begin': 'sounds/voice-short-break-begin.mp3',
+        'voice-short-break-ended': 'sounds/voice-short-break-ended.mp3'
       };
-      const key = map[eventKey];
-      if (!key) return;
-      const a = audioPool[key];
-      if (a) safePlay(a);
-    }
-  }
 
-  /* ===========
-     Display rendering
-     =========== */
-  function fmt(seconds) {
-    seconds = Math.max(0, Math.floor(seconds));
-    const m = Math.floor(seconds / 60);
-    const s = seconds % 60;
-    const mm = keepZeroCheckbox.checked ? String(m).padStart(2, '0') : String(m);
-    const ss = String(s).padStart(2, '0');
-    return `${mm}:${ss}`;
-  }
-
-  function buildDigits(str) {
-    const frag = document.createDocumentFragment();
-    const wrapper = document.createElement('div');
-    wrapper.className = 'digits';
-    for (let ch of str) {
-      if (ch === ':') {
-        const col = document.createElement('span');
-        col.className = 'colon';
-        col.textContent = ':';
-        wrapper.appendChild(col);
-      } else {
-        const d = document.createElement('span');
-        d.className = 'digit';
-        d.textContent = ch;
-        wrapper.appendChild(d);
+      // preloaded audio objects (fail silently)
+      const audioPool = {};
+      for (const [k,p] of Object.entries(SOUND_FILES)) {
+        try {
+          const a = new Audio(p);
+          a.preload = 'auto';
+          audioPool[k] = a;
+        } catch (e) {
+          audioPool[k] = null;
+        }
       }
-    }
-    frag.appendChild(wrapper);
-    return frag;
-  }
 
-  function initialRender() {
-    timerEl.innerHTML = '';
-    const s = fmt(remaining);
-    timerEl.appendChild(buildDigits(s));
-    lastRendered = s;
-  }
+      // runtime state
+      let settings = loadSettings();
+      settings.work = Number(settings.work);
+      settings.short = Number(settings.short);
+      settings.long = Number(settings.long);
 
-  // helper: next numeric index (skip colons)
-  function nextNumericIndex(digitEls, i) {
-    for (let j = i + 1; j < digitEls.length; j++) {
-      if (digitEls[j].classList.contains('digit')) return j;
-    }
-    return -1;
-  }
+      let totalSeconds = Math.max(0, Number(settings.work)) * 60;
+      let remaining = totalSeconds;
+      let ticker = null;
+      let running = false;
+      let lastRendered = '';
+      let focusCount = Number(settings._focusCount) || 0;
 
-  function updateDisplay() {
-    const s = fmt(remaining);
-    if (!lastRendered) { initialRender(); return; }
+      // session logging helpers
+      let sessionStartMs = null;
+      let lastStartWasAuto = false;
 
-    if (s.length !== lastRendered.length) {
-      timerEl.innerHTML = '';
-      timerEl.appendChild(buildDigits(s));
-      lastRendered = s;
-      return;
-    }
+      applySettings(settings);
 
-    const digitEls = timerEl.querySelectorAll('.digit, .colon');
-    if (digitEls.length !== s.length) {
-      timerEl.innerHTML = '';
-      timerEl.appendChild(buildDigits(s));
-      lastRendered = s;
-      return;
-    }
+      /* ===========
+         Storage + Settings
+         =========== */
+      function loadSettings() {
+        try {
+          const raw = localStorage.getItem(LS_KEY);
+          if (!raw) return { ...DEFAULTS };
+          const parsed = JSON.parse(raw);
+          return {
+            work: parsed.work !== undefined ? Number(parsed.work) : DEFAULTS.work,
+            short: parsed.short !== undefined ? Number(parsed.short) : DEFAULTS.short,
+            long: parsed.long !== undefined ? Number(parsed.long) : DEFAULTS.long,
+            leadingZero: parsed.leadingZero === false ? false : DEFAULTS.leadingZero,
+            autoStartNext: parsed.autoStartNext === true,
+            autoContinueAfterBreak: parsed.autoContinueAfterBreak === true,
+            sessionsBeforeLong: parsed.sessionsBeforeLong !== undefined ? Number(parsed.sessionsBeforeLong) : DEFAULTS.sessionsBeforeLong,
+            soundMode: parsed.soundMode || DEFAULTS.soundMode,
+            _focusCount: parsed._focusCount !== undefined ? Number(parsed._focusCount) : 0
+          };
+        } catch (e) {
+          return { ...DEFAULTS };
+        }
+      }
 
-    for (let i = 0; i < s.length; i++) {
-      const ch = s[i];
-      const el = digitEls[i];
-      if (el.textContent !== ch) {
-        el.textContent = ch;
-        el.classList.remove('stretch');
-        void el.offsetWidth;
-        el.classList.add('stretch');
+      function saveSettingsToStorage(s) {
+        const stash = { ...s, _focus_count: focusCount, _focusCount: focusCount };
+        localStorage.setItem(LS_KEY, JSON.stringify(stash));
+      }
 
-        // pull next numeric digit up
-        const nxtIdx = nextNumericIndex(digitEls, i);
-        if (nxtIdx !== -1) {
-          const nextEl = digitEls[nxtIdx];
-          nextEl.classList.remove('pull-up');
-          void nextEl.offsetWidth;
-          nextEl.classList.add('pull-up');
-          setTimeout(() => nextEl.classList.remove('pull-up'), 800);
+      function applySettings(s) {
+        // update mode buttons (store decimal minutes)
+        const btnWork = document.getElementById('mode-work');
+        const btnShort = document.getElementById('mode-break');
+        const btnLong = document.getElementById('mode-long');
+
+        if (btnWork) btnWork.dataset.min = String(s.work);
+        if (btnShort) btnShort.dataset.min = String(s.short);
+        if (btnLong) btnLong.dataset.min = String(s.long);
+
+        if (keepZeroCheckbox) keepZeroCheckbox.checked = !!s.leadingZero;
+
+        // reflect sound radio
+        if (soundNone) soundNone.checked = s.soundMode === 'none';
+        if (soundDefault) soundDefault.checked = s.soundMode === 'default';
+        if (soundVoice) soundVoice.checked = s.soundMode === 'voice';
+
+        // update timer lengths for active mode (allow zero and decimals)
+        const active = modes.find(m => m.classList.contains('active'));
+        const selectedMinutes = active ? parseFloat(active.dataset.min) : Number(s.work);
+        totalSeconds = Math.max(0, Number(selectedMinutes)) * 60;
+        remaining = totalSeconds;
+
+        if (Number.isFinite(s._focusCount)) focusCount = Number(s._focusCount) || 0;
+
+        settings = { ...s };
+        saveSettingsToStorage(settings);
+
+        initialRender();
+      }
+
+      /* ===========
+         Sound helpers
+         =========== */
+      function safePlay(audioEl) {
+        try {
+          const clone = audioEl.cloneNode();
+          clone.preload = 'auto';
+          const p = clone.play();
+          if (p && p.catch) p.catch(() => { /* ignore autoplay rejection */ });
+        } catch (e) { /* ignore */ }
+      }
+
+      function playSoundForEvent(eventKey) {
+        if (!settings || settings.soundMode === 'none') return;
+        if (settings.soundMode === 'default') {
+          const a = audioPool['default'];
+          if (a) safePlay(a);
+          return;
+        }
+        if (settings.soundMode === 'voice') {
+          const map = {
+            'focus-begin': 'voice-focus-begin',
+            'focus-ended': 'voice-focus-ended',
+            'short-begin': 'voice-short-break-begin',
+            'short-ended': 'voice-short-break-ended',
+            'long-begin': 'voice-long-break-begin',
+            'long-ended': 'voice-long-break-ended'
+          };
+          const key = map[eventKey];
+          if (!key) return;
+          const a = audioPool[key];
+          if (a) safePlay(a);
+        }
+      }
+
+      /* ===========
+         Display rendering
+         =========== */
+      function fmt(seconds) {
+        seconds = Math.max(0, Math.floor(seconds));
+        const m = Math.floor(seconds / 60);
+        const s = seconds % 60;
+        const mm = (keepZeroCheckbox && keepZeroCheckbox.checked) ? String(m).padStart(2, '0') : String(m);
+        const ss = String(s).padStart(2, '0');
+        return `${mm}:${ss}`;
+      }
+
+      function buildDigits(str) {
+        const frag = document.createDocumentFragment();
+        const wrapper = document.createElement('div');
+        wrapper.className = 'digits';
+        for (let ch of str) {
+          if (ch === ':') {
+            const col = document.createElement('span');
+            col.className = 'colon';
+            col.textContent = ':';
+            wrapper.appendChild(col);
+          } else {
+            const d = document.createElement('span');
+            d.className = 'digit';
+            d.textContent = ch;
+            wrapper.appendChild(d);
+          }
+        }
+        frag.appendChild(wrapper);
+        return frag;
+      }
+
+      function initialRender() {
+        if (!timerEl) return;
+        timerEl.innerHTML = '';
+        const s = fmt(remaining);
+        timerEl.appendChild(buildDigits(s));
+        lastRendered = s;
+      }
+
+      function nextNumericIndex(digitEls, i) {
+        for (let j = i + 1; j < digitEls.length; j++) {
+          if (digitEls[j].classList.contains('digit')) return j;
+        }
+        return -1;
+      }
+
+      function updateDisplay() {
+        if (!timerEl) return;
+        const s = fmt(remaining);
+        if (!lastRendered) { initialRender(); return; }
+
+        if (s.length !== lastRendered.length) {
+          timerEl.innerHTML = '';
+          timerEl.appendChild(buildDigits(s));
+          lastRendered = s;
+          updateFloatingUI();
+          return;
         }
 
-        setTimeout(() => el.classList.remove('stretch'), 800);
+        const digitEls = timerEl.querySelectorAll('.digit, .colon');
+        if (digitEls.length !== s.length) {
+          timerEl.innerHTML = '';
+          timerEl.appendChild(buildDigits(s));
+          lastRendered = s;
+          updateFloatingUI();
+          return;
+        }
+
+        for (let i = 0; i < s.length; i++) {
+          const ch = s[i];
+          const el = digitEls[i];
+          if (el.textContent !== ch) {
+            el.textContent = ch;
+            el.classList.remove('stretch');
+            void el.offsetWidth;
+            el.classList.add('stretch');
+
+            // pull next numeric digit up
+            const nxtIdx = nextNumericIndex(digitEls, i);
+            if (nxtIdx !== -1) {
+              const nextEl = digitEls[nxtIdx];
+              nextEl.classList.remove('pull-up');
+              void nextEl.offsetWidth;
+              nextEl.classList.add('pull-up');
+              setTimeout(() => nextEl.classList.remove('pull-up'), 800);
+            }
+
+            setTimeout(() => el.classList.remove('stretch'), 800);
+          }
+        }
+        lastRendered = s;
+        updateFloatingUI();
       }
-    }
-    lastRendered = s;
-  }
 
-  /* ===========
-     Timer core: start/pause/reset with suppressBeginSound and isAuto flags
-     - startTimer(suppressBeginSound=false, isAuto=false)
-     =========== */
-  let endTime = null;
+      /* ===========
+         Timer core
+         =========== */
+      let endTime = null;
 
-  function startTimer(suppressBeginSound = false, isAuto = false) {
-    if (running) return;
-    running = true;
-    startBtn.disabled = true;
-    pauseBtn.disabled = false;
-    resetBtn.disabled = false;
+      function startTimer(suppressBeginSound = false, isAuto = false) {
+        if (running) return;
+        running = true;
+        if (startBtn) startBtn.disabled = true;
+        if (pauseBtn) pauseBtn.disabled = false;
+        if (resetBtn) resetBtn.disabled = false;
 
-    // set session start flags for analytics
-    sessionStartMs = Date.now();
-    lastStartWasAuto = !!isAuto;
+        sessionStartMs = Date.now();
+        lastStartWasAuto = !!isAuto;
 
-    // Play begin sound only if not suppressed
-    if (!suppressBeginSound && settings.soundMode !== 'none') {
-      const mode = currentMode();
-      if (mode === 'work') playSoundForEvent('focus-begin');
-      else if (mode === 'short') playSoundForEvent('short-begin');
-      else if (mode === 'long') playSoundForEvent('long-begin');
-    }
+        if (!suppressBeginSound && settings.soundMode !== 'none') {
+          const mode = currentMode();
+          if (mode === 'work') playSoundForEvent('focus-begin');
+          else if (mode === 'short') playSoundForEvent('short-begin');
+          else if (mode === 'long') playSoundForEvent('long-begin');
+        }
 
-    endTime = Date.now() + remaining * 1000;
-    ticker = setInterval(() => {
-      const now = Date.now();
-      remaining = Math.max(0, Math.round((endTime - now) / 1000));
-      updateDisplay();
-      if (remaining <= 0) {
-        stopTicker();
-        performPhaseTransitionThenNext();
+        endTime = Date.now() + remaining * 1000;
+        ticker = setInterval(() => {
+          const now = Date.now();
+          remaining = Math.max(0, Math.round((endTime - now) / 1000));
+          updateDisplay();
+          if (remaining <= 0) {
+            stopTicker();
+            performPhaseTransitionThenNext();
+          }
+        }, 180);
       }
-    }, 180);
-  }
 
-  function stopTicker() {
-    running = false;
-    startBtn.disabled = false;
-    pauseBtn.disabled = true;
-    if (ticker) { clearInterval(ticker); ticker = null; }
-  }
-
-  function pauseTimer() { if (!running) return; stopTicker(); }
-  function resetTimer() { stopTicker(); remaining = totalSeconds; updateDisplay(); }
-
-  function currentMode() {
-    const active = modes.find(m => m.classList.contains('active'));
-    if (!active) return 'work';
-    if (active.id === 'mode-work') return 'work';
-    if (active.id === 'mode-break') return 'short';
-    if (active.id === 'mode-long') return 'long';
-    return 'work';
-  }
-
-  function setMode(minutes, elmOrId) {
-    modes.forEach(m => m.classList.remove('active'));
-    if (typeof elmOrId === 'string') {
-      const el = document.getElementById(elmOrId);
-      if (el) el.classList.add('active');
-    } else if (elmOrId instanceof Element) {
-      elmOrId.classList.add('active');
-    }
-    const active = modes.find(m => m.classList.contains('active'));
-    const mins = active ? parseFloat(active.dataset.min) : Number(minutes);
-    // allow zero and decimals (convert minutes to seconds)
-    totalSeconds = Math.max(0, Number(mins)) * 60;
-    remaining = totalSeconds;
-    initialRender();
-  }
-
-  /* ===========
-     Session record (analytics)
-     - recordCompletedSession(prevMode)
-     Saves to localStorage HISTORY_KEY and also calls window.logSession(entry) if available.
-     =========== */
-  function recordCompletedSession(prevMode) {
-    // compute start/end/duration
-    const endMs = Date.now();
-    const startMs = sessionStartMs || (endMs - (totalSeconds - remaining) * 1000);
-    const durationSec = Math.max(0, Math.round((endMs - startMs) / 1000));
-
-    const entry = {
-      id: Date.now().toString(36) + '-' + Math.random().toString(36).slice(2,6),
-      mode: prevMode, // 'work'|'short'|'long'
-      start: startMs,
-      end: endMs,
-      durationSec,
-      autoStarted: !!lastStartWasAuto,
-      date: new Date(endMs).toISOString().slice(0,10)
-    };
-
-    // save to localStorage history
-    try {
-      const raw = localStorage.getItem(HISTORY_KEY) || '[]';
-      const arr = JSON.parse(raw);
-      arr.push(entry);
-      localStorage.setItem(HISTORY_KEY, JSON.stringify(arr));
-    } catch (e) {
-      // ignore
-    }
-
-    // call analytics page if available
-    try {
-      if (window.logSession && typeof window.logSession === 'function') {
-        window.logSession(entry);
+      function stopTicker() {
+        running = false;
+        if (startBtn) startBtn.disabled = false;
+        if (pauseBtn) pauseBtn.disabled = true;
+        if (ticker) { clearInterval(ticker); ticker = null; }
       }
-    } catch (e) { /* ignore */ }
 
-    // reset session start flags
-    sessionStartMs = null;
-    lastStartWasAuto = false;
-  }
+      function pauseTimer() { if (!running) return; stopTicker(); }
+      function resetTimer() { stopTicker(); remaining = totalSeconds; updateDisplay(); }
 
-  /* ===========
-     Phase transition animation + sound + next logic
-     =========== */
-  function performPhaseTransitionThenNext() {
-    // determine prev & next mode
-    const prevMode = currentMode(); // 'work'|'short'|'long'
-    let nextModeId = 'mode-work';
-    if (prevMode === 'work') {
-      focusCount += 1;
-      if (focusCount % settings.sessionsBeforeLong === 0) nextModeId = 'mode-long';
-      else nextModeId = 'mode-break';
-    } else {
-      nextModeId = 'mode-work';
-      if (prevMode === 'long') focusCount = 0;
-    }
-
-    // record the completed session (before animation so analytics stays accurate)
-    recordCompletedSession(prevMode);
-
-    // determine whether next will auto-start
-    const prevWasBreak = (prevMode === 'short' || prevMode === 'long');
-    const nextWillAutoStart = settings.autoStartNext || (settings.autoContinueAfterBreak && prevWasBreak);
-
-    // decide which sound to trigger now:
-    // - if nextWillAutoStart -> play next begin sound before animation
-    // - else -> play current ended sound
-    if (settings.soundMode !== 'none') {
-      if (nextWillAutoStart) {
-        const nextLabelKey = (nextModeId === 'mode-work') ? 'focus-begin' : (nextModeId === 'mode-break' ? 'short-begin' : 'long-begin');
-        playSoundForEvent(nextLabelKey);
-      } else {
-        const endedKey = (prevMode === 'work') ? 'focus-ended' : (prevMode === 'short' ? 'short-ended' : 'long-ended');
-        playSoundForEvent(endedKey);
+      function currentMode() {
+        const active = modes.find(m => m.classList.contains('active'));
+        if (!active) return 'work';
+        if (active.id === 'mode-work') return 'work';
+        if (active.id === 'mode-break') return 'short';
+        if (active.id === 'mode-long') return 'long';
+        return 'work';
       }
-    }
 
-    // animate with the label of the NEXT session
-    const animLabel = (nextModeId === 'mode-work') ? 'FOCUS' : 'BREAK';
-    playPhaseAnimation(animLabel).then(() => {
-      // after animation, switch UI mode
-      const nextBtn = document.getElementById(nextModeId);
-      if (nextBtn) setMode(Number(nextBtn.dataset.min), nextBtn);
-
-      // persist settings + focusCount
-      saveSettingsToStorage(settings);
-
-      // if nextWillAutoStart -> start timer but suppress begin sound (we already played it)
-      if (nextWillAutoStart) {
-        // use isAuto=true so the session is recorded as auto-started
-        startTimer(true, true);
-      } else {
-        // remain stopped, allow user to start
-        startBtn.disabled = false;
-        pauseBtn.disabled = true;
+      function setMode(minutes, elmOrId) {
+        modes.forEach(m => m.classList.remove('active'));
+        if (typeof elmOrId === 'string') {
+          const el = document.getElementById(elmOrId);
+          if (el) el.classList.add('active');
+        } else if (elmOrId instanceof Element) {
+          elmOrId.classList.add('active');
+        }
+        const active = modes.find(m => m.classList.contains('active'));
+        const mins = active ? parseFloat(active.dataset.min) : Number(minutes);
+        totalSeconds = Math.max(0, Number(mins)) * 60;
+        remaining = totalSeconds;
+        initialRender();
       }
-    });
+
+      /* ===========
+         Session record (analytics)
+         =========== */
+      function recordCompletedSession(prevMode) {
+        const endMs = Date.now();
+        const startMs = sessionStartMs || (endMs - (totalSeconds - remaining) * 1000);
+        const durationSec = Math.max(0, Math.round((endMs - startMs) / 1000));
+
+        const entry = {
+          id: Date.now().toString(36) + '-' + Math.random().toString(36).slice(2,6),
+          mode: prevMode,
+          start: startMs,
+          end: endMs,
+          durationSec,
+          autoStarted: !!lastStartWasAuto,
+          date: new Date(endMs).toISOString().slice(0,10)
+        };
+
+        try {
+          const raw = localStorage.getItem(HISTORY_KEY) || '[]';
+          const arr = JSON.parse(raw);
+          arr.push(entry);
+          localStorage.setItem(HISTORY_KEY, JSON.stringify(arr));
+        } catch (e) { /* ignore */ }
+
+        try {
+          if (window.logSession && typeof window.logSession === 'function') {
+            window.logSession(entry);
+          }
+        } catch (e) { /* ignore */ }
+
+        sessionStartMs = null;
+        lastStartWasAuto = false;
+      }
+
+      /* ===========
+         Phase transition animation + sound + next logic
+         =========== */
+      function performPhaseTransitionThenNext() {
+        const prevMode = currentMode();
+        let nextModeId = 'mode-work';
+        if (prevMode === 'work') {
+          focusCount += 1;
+          if (focusCount % settings.sessionsBeforeLong === 0) nextModeId = 'mode-long';
+          else nextModeId = 'mode-break';
+        } else {
+          nextModeId = 'mode-work';
+          if (prevMode === 'long') focusCount = 0;
+        }
+
+        recordCompletedSession(prevMode);
+
+        const prevWasBreak = (prevMode === 'short' || prevMode === 'long');
+        const nextWillAutoStart = settings.autoStartNext || (settings.autoContinueAfterBreak && prevWasBreak);
+
+        if (settings.soundMode !== 'none') {
+          if (nextWillAutoStart) {
+            const nextLabelKey = (nextModeId === 'mode-work') ? 'focus-begin' : (nextModeId === 'mode-break' ? 'short-begin' : 'long-begin');
+            playSoundForEvent(nextLabelKey);
+          } else {
+            const endedKey = (prevMode === 'work') ? 'focus-ended' : (prevMode === 'short' ? 'short-ended' : 'long-ended');
+            playSoundForEvent(endedKey);
+          }
+        }
+
+        const animLabel = (nextModeId === 'mode-work') ? 'FOCUS' : 'BREAK';
+        playPhaseAnimation(animLabel).then(() => {
+          const nextBtn = document.getElementById(nextModeId);
+          if (nextBtn) setMode(Number(nextBtn.dataset.min), nextBtn);
+          saveSettingsToStorage(settings);
+
+          if (nextWillAutoStart) {
+            startTimer(true, true);
+          } else {
+            if (startBtn) startBtn.disabled = false;
+            if (pauseBtn) pauseBtn.disabled = true;
+          }
+        });
+      }
+
+      function playPhaseAnimation(label) {
+        return new Promise((resolve) => {
+          const DURATION = 1200;
+          if (phaseLabelEl) phaseLabelEl.textContent = label;
+          if (phaseOverlay) {
+            phaseOverlay.classList.remove('hidden');
+            phaseOverlay.classList.add('playing');
+            phaseOverlay.setAttribute('aria-hidden', 'false');
+            void phaseOverlay.offsetWidth;
+            setTimeout(() => {
+              phaseOverlay.classList.remove('playing');
+              phaseOverlay.classList.add('hidden');
+              phaseOverlay.setAttribute('aria-hidden', 'true');
+              setTimeout(resolve, 80);
+            }, DURATION);
+          } else {
+            resolve();
+          }
+        });
+      }
+
+      /* ===========
+         Settings popup handlers (decimal support)
+         =========== */
+      function openSettings() {
+        const s = loadSettings();
+        if (workInput) workInput.value = (s.work !== undefined && !Number.isNaN(Number(s.work))) ? Number(s.work) : s.work;
+        if (shortInput) shortInput.value = (s.short !== undefined && !Number.isNaN(Number(s.short))) ? Number(s.short) : s.short;
+        if (longInput) longInput.value = (s.long !== undefined && !Number.isNaN(Number(s.long))) ? Number(s.long) : s.long;
+        if (sessionsBeforeLongInput) sessionsBeforeLongInput.value = s.sessionsBeforeLong !== undefined ? s.sessionsBeforeLong : DEFAULTS.sessionsBeforeLong;
+        if (autoStartInput) autoStartInput.checked = !!s.autoStartNext;
+        if (autoContinueBreakInput) autoContinueBreakInput.checked = !!s.autoContinueAfterBreak;
+        if (keepZeroModal) keepZeroModal.checked = !!s.leadingZero;
+
+        if (soundNone && s.soundMode === 'none') soundNone.checked = true;
+        else if (soundVoice && s.soundMode === 'voice') soundVoice.checked = true;
+        else if (soundDefault) soundDefault.checked = true;
+
+        if (settingsOverlay) {
+          settingsOverlay.classList.remove('hidden');
+          settingsOverlay.setAttribute('aria-hidden', 'false');
+        }
+        setTimeout(() => { if (workInput) workInput.focus(); }, 80);
+      }
+
+      function closeSettingsOverlay() {
+        if (settingsOverlay) {
+          settingsOverlay.classList.add('hidden');
+          settingsOverlay.setAttribute('aria-hidden', 'true');
+        }
+        if (settingsBtn) settingsBtn.focus();
+      }
+
+      function validMinutesValue(v) {
+        if (!Number.isFinite(v)) return false;
+        if (v < 0 || v > 999) return false;
+        const rounded = Math.round(v * 100);
+        return Math.abs(rounded - v * 100) < 0.000001;
+      }
+
+      if (saveSettings) {
+        saveSettings.addEventListener('click', () => {
+          const w = workInput ? Number(workInput.value) : DEFAULTS.work;
+          const s = shortInput ? Number(shortInput.value) : DEFAULTS.short;
+          const l = longInput ? Number(longInput.value) : DEFAULTS.long;
+          const sessionsBeforeLong = sessionsBeforeLongInput ? Number(sessionsBeforeLongInput.value) : DEFAULTS.sessionsBeforeLong;
+          const autoStartNext = !!(autoStartInput && autoStartInput.checked);
+          const autoContinueAfterBreak = !!(autoContinueBreakInput && autoContinueBreakInput.checked);
+          const leading = !!(keepZeroModal && keepZeroModal.checked);
+          const chosenSoundMode = soundNone && soundNone.checked ? 'none' : (soundVoice && soundVoice.checked ? 'voice' : 'default');
+
+          if (!validMinutesValue(w)) { if (workInput) focusWarn(workInput); return; }
+          if (!validMinutesValue(s)) { if (shortInput) focusWarn(shortInput); return; }
+          if (!validMinutesValue(l)) { if (longInput) focusWarn(longInput); return; }
+          if (!Number.isFinite(sessionsBeforeLong) || sessionsBeforeLong < 1 || sessionsBeforeLong > 99) { if (sessionsBeforeLongInput) focusWarn(sessionsBeforeLongInput); return; }
+
+          const newSettings = {
+            work: Number((Math.round(w*100)/100).toFixed(2)),
+            short: Number((Math.round(s*100)/100).toFixed(2)),
+            long: Number((Math.round(l*100)/100).toFixed(2)),
+            leadingZero: leading,
+            autoStartNext: autoStartNext,
+            autoContinueAfterBreak: autoContinueAfterBreak,
+            sessionsBeforeLong: Math.floor(sessionsBeforeLong),
+            soundMode: chosenSoundMode
+          };
+
+          settings = { ...newSettings };
+          saveSettingsToStorage(settings);
+          applySettings(settings);
+          focusCount = 0;
+          closeSettingsOverlay();
+        });
+      }
+
+      if (cancelSettings) cancelSettings.addEventListener('click', closeSettingsOverlay);
+      if (settingsBtn) settingsBtn.addEventListener('click', openSettings);
+      if (closeSettings) closeSettings.addEventListener('click', closeSettingsOverlay);
+
+      window.addEventListener('keydown', (e) => {
+        if (e.key === 'Escape' && settingsOverlay && !settingsOverlay.classList.contains('hidden')) closeSettingsOverlay();
+      });
+
+      function focusWarn(el) {
+        try {
+          el.focus();
+          el.animate([{ boxShadow: '0 0 0 6px rgba(155,89,255,0.06)' }, { boxShadow: 'none' }], { duration: 420 });
+        } catch (e) {}
+      }
+
+      if (keepZeroCheckbox) {
+        keepZeroCheckbox.addEventListener('change', () => {
+          if (keepZeroModal) keepZeroModal.checked = keepZeroCheckbox.checked;
+          updateDisplay();
+          settings.leadingZero = !!keepZeroCheckbox.checked;
+          saveSettingsToStorage(settings);
+        });
+      }
+      if (keepZeroModal) {
+        keepZeroModal.addEventListener('change', () => {
+          if (keepZeroCheckbox) keepZeroCheckbox.checked = keepZeroModal.checked;
+        });
+      }
+
+      /* ===========
+         Compact PiP (kept as before) + robust compact popup fix
+         =========== */
+
+      // small PiP canvas settings (we assume HTML canvas 320x64 exists)
+      const PIP_CSS_W = 320;
+      const PIP_CSS_H = 64;
+
+      // minimal drawing helper for PiP (DPR-aware)
+      function roundRect(ctx, x, y, width, height, radius) {
+        if (typeof radius === 'number') {
+          radius = {tl: radius, tr: radius, br: radius, bl: radius};
+        } else {
+          const defaultRadius = {tl:0, tr:0, br:0, bl:0};
+          for (let side in defaultRadius) radius[side] = radius[side] || defaultRadius[side];
+        }
+        ctx.beginPath();
+        ctx.moveTo(x + radius.tl, y);
+        ctx.lineTo(x + width - radius.tr, y);
+        ctx.quadraticCurveTo(x + width, y, x + width, y + radius.tr);
+        ctx.lineTo(x + width, y + height - radius.br);
+        ctx.quadraticCurveTo(x + width, y + height, x + width - radius.br, y + height);
+        ctx.lineTo(x + radius.bl, y + height);
+        ctx.quadraticCurveTo(x, y + height, x, y + height - radius.bl);
+        ctx.lineTo(x, y + radius.tl);
+        ctx.quadraticCurveTo(x, y, x + radius.tl, y);
+        ctx.closePath();
+      }
+
+      function ensurePipCanvasPaintable() {
+        if (!pipCanvas) return;
+        pipCanvas.style.display = 'block';
+        pipCanvas.style.position = 'fixed';
+        pipCanvas.style.left = '-9999px';
+        pipCanvas.style.top = '-9999px';
+        pipCanvas.style.width = PIP_CSS_W + 'px';
+        pipCanvas.style.height = PIP_CSS_H + 'px';
+        pipCanvas.style.opacity = '0';
+        pipCanvas.style.pointerEvents = 'none';
+      }
+
+      function drawPiPCanvas() {
+        if (!pipCanvas) return;
+        try {
+          ensurePipCanvasPaintable();
+          const dpr = window.devicePixelRatio || 1;
+          pipCanvas.width = Math.round(PIP_CSS_W * dpr);
+          pipCanvas.height = Math.round(PIP_CSS_H * dpr);
+          pipCanvas.style.width = PIP_CSS_W + 'px';
+          pipCanvas.style.height = PIP_CSS_H + 'px';
+
+          const ctx = pipCanvas.getContext('2d');
+          if (!ctx) return;
+          ctx.setTransform(1,0,0,1,0,0);
+          ctx.clearRect(0,0,pipCanvas.width,pipCanvas.height);
+          ctx.scale(dpr, dpr);
+
+          const W = PIP_CSS_W, H = PIP_CSS_H;
+          const radius = 10;
+          ctx.fillStyle = 'rgba(5,5,7,0.98)';
+          roundRect(ctx, 0.5, 0.5, W - 1, H - 1, radius);
+          ctx.fill();
+
+          ctx.strokeStyle = 'rgba(255,255,255,0.03)';
+          ctx.lineWidth = 1;
+          roundRect(ctx, 0.5, 0.5, W - 1, H - 1, radius);
+          ctx.stroke();
+
+          const g = ctx.createLinearGradient(0, 0, W, 0);
+          g.addColorStop(0, 'rgba(155,89,255,0.06)');
+          g.addColorStop(1, 'rgba(255,120,60,0.04)');
+          ctx.fillStyle = g;
+          ctx.fillRect(0, H - 14, W, 14);
+
+          ctx.fillStyle = '#fff';
+          ctx.font = '600 12px system-ui, Arial';
+          ctx.textBaseline = 'middle';
+          const modeLabel = (currentMode && currentMode() === 'work') ? 'FOCUS' : 'BREAK';
+          ctx.fillText(modeLabel, 12, H/2 - 6);
+
+          const timeStr = fmt(remaining);
+          ctx.font = '900 28px system-ui, Arial';
+          ctx.fillStyle = '#fff';
+          const measure = ctx.measureText(timeStr);
+          ctx.fillText(timeStr, W - 12 - measure.width, H/2 - 6);
+
+          ctx.font = '700 10px system-ui, Arial';
+          ctx.fillStyle = running ? '#9b59ff' : 'rgba(155,89,255,0.45)';
+          const status = running ? '● Running' : '❚❚ Paused';
+          ctx.fillText(status, 12, H - 8);
+        } catch (e) {
+          console.error('drawPiPCanvas error', e);
+        }
+      }
+
+      // PiP start/stop
+      let pipActive = false, pipStream = null, pipRAF = null;
+      async function startPiP() {
+        if (!pipCanvas || !pipVideo) {
+          alert('PiP elements are not present in the page.');
+          return;
+        }
+        if (!('requestPictureInPicture' in HTMLVideoElement.prototype)) {
+          alert('Picture-in-Picture is not supported by this browser.');
+          return;
+        }
+
+        ensurePipCanvasPaintable();
+        drawPiPCanvas();
+
+        try {
+          pipStream = pipCanvas.captureStream ? pipCanvas.captureStream(15) : null;
+          if (!pipStream) {
+            alert('Your browser does not support canvas.captureStream(). Try the compact popup instead.');
+            return;
+          }
+          pipVideo.muted = true;
+          pipVideo.autoplay = true;
+          pipVideo.playsInline = true;
+          pipVideo.srcObject = pipStream;
+          await pipVideo.play();
+          await pipVideo.requestPictureInPicture();
+          pipActive = true;
+
+          function loop() {
+            if (!pipActive) return;
+            drawPiPCanvas();
+            pipRAF = requestAnimationFrame(loop);
+          }
+          pipRAF = requestAnimationFrame(loop);
+          pipVideo.addEventListener('leavepictureinpicture', stopPiPOnce, { once: true });
+        } catch (err) {
+          console.error('PiP start failed', err);
+          alert('Unable to start Picture-in-Picture: ' + (err && err.message ? err.message : err));
+        }
+      }
+      function stopPiPOnce() { stopPiP(); }
+      function stopPiP() {
+        pipActive = false;
+        if (pipRAF) { cancelAnimationFrame(pipRAF); pipRAF = null; }
+        try { if (document.pictureInPictureElement) document.exitPictureInPicture().catch(()=>{}); } catch(e){}
+        try { if (pipVideo) { pipVideo.pause(); pipVideo.srcObject = null; } } catch(e){}
+        try { if (pipStream) { pipStream.getTracks().forEach(t=>t.stop()); pipStream=null; } } catch(e){}
+      }
+
+      // compact popup — robust sending (no fragile handshake)
+      let popupRef = null, popupSenderInterval = null;
+      function openPopupWindow() {
+        const w = 200, h = 78; // compact popup to match PiP look
+        const left = Math.max(0, (screen.width - w) / 2);
+        const top = Math.max(0, (screen.height - h) / 6);
+        const specs = `width=${w},height=${h},left=${left},top=${top},resizable=yes`;
+        // popup content: immediately draws a default frame and accepts messages
+        const html = `
+          <html><head><meta name="viewport" content="width=device-width,initial-scale=1"><title>Pomodoro Floating</title>
+          <style>html,body{height:100%;margin:0;background:#050507}canvas{display:block;width:100%;height:100%}</style>
+          </head><body>
+            <canvas id="c" width="${w}" height="${h}"></canvas>
+            <script>
+              (function(){
+                const canvas = document.getElementById('c');
+                const ctx = canvas.getContext('2d');
+                function drawInitial() {
+                  try {
+                    ctx.clearRect(0,0,canvas.width,canvas.height);
+                    ctx.fillStyle='#050507';
+                    ctx.fillRect(0,0,canvas.width,canvas.height);
+                    ctx.fillStyle='#fff'; ctx.font='600 12px system-ui,Arial'; ctx.textBaseline='middle';
+                    ctx.fillText('FOCUS', 12, canvas.height/2 - 6);
+                    ctx.font='900 28px system-ui,Arial';
+                    const timeStr = '00:00'; const measure = ctx.measureText(timeStr);
+                    ctx.fillText(timeStr, canvas.width - 12 - measure.width, canvas.height/2 - 6);
+                  } catch(e){}
+                }
+                // draw initial so it's never blank
+                drawInitial();
+                window.addEventListener('message', (ev) => {
+                  try {
+                    const d = ev.data || {};
+                    ctx.clearRect(0,0,canvas.width,canvas.height);
+                    ctx.fillStyle='#050507';
+                    ctx.fillRect(0,0,canvas.width,canvas.height);
+                    ctx.fillStyle='#fff'; ctx.font='600 12px system-ui,Arial'; ctx.textBaseline='middle';
+                    ctx.fillText(d.mode||'FOCUS', 12, canvas.height/2 - 6);
+                    ctx.font='900 28px system-ui,Arial';
+                    const timeStr = d.timeStr || '00:00';
+                    const measure = ctx.measureText(timeStr);
+                    ctx.fillText(timeStr, canvas.width - 12 - measure.width, canvas.height/2 - 6);
+                  } catch(e){}
+                }, false);
+                // notify opener (best-effort) and also periodically attempt to notify in case opener wasn't listening yet
+                try { window.opener && window.opener.postMessage({ type:'popup-ready' }, '*'); } catch(e){}
+                setInterval(() => { try { window.opener && window.opener.postMessage({ type:'popup-ready' }, '*'); } catch(e){} }, 600);
+              })();
+            <\/script>
+          </body></html>`;
+        const url = 'data:text/html;charset=utf-8,' + encodeURIComponent(html);
+        popupRef = window.open(url, 'pomodoro_floating_popup', specs);
+        if (!popupRef) { alert('Popup blocked. Allow popups or use PiP/in-page'); return; }
+
+        // start sending updates proactively (every 500ms)
+        if (popupSenderInterval) { clearInterval(popupSenderInterval); popupSenderInterval = null; }
+        // send first update quickly after a short delay to give popup a chance to hydrate
+        setTimeout(() => sendPopupUpdate(), 120);
+        popupSenderInterval = setInterval(() => {
+          if (!popupRef || popupRef.closed) { clearInterval(popupSenderInterval); popupSenderInterval = null; return; }
+          sendPopupUpdate();
+        }, 500);
+      }
+
+      function sendPopupUpdate() {
+        if (!popupRef || popupRef.closed) return;
+        const payload = { mode: (currentMode() === 'work' ? 'FOCUS' : 'BREAK'), timeStr: fmt(remaining), running };
+        try { popupRef.postMessage(payload, '*'); } catch(e) {}
+      }
+
+      // in-page floating show/hide/update
+      function showInpageFloating() {
+        if (!inpageFloating) return;
+        inpageFloating.classList.remove('hidden');
+        inpageFloating.setAttribute('aria-hidden', 'false');
+        updateFloatingUI();
+      }
+      function hideInpageFloating() {
+        if (!inpageFloating) return;
+        inpageFloating.classList.add('hidden');
+        inpageFloating.setAttribute('aria-hidden', 'true');
+      }
+      function updateFloatingUI() {
+        if (inpageFloating && !inpageFloating.classList.contains('hidden')) {
+          const m = currentMode() === 'work' ? 'FOCUS' : 'BREAK';
+          if (floatModeEl) floatModeEl.textContent = m;
+          if (floatTimerEl) floatTimerEl.textContent = fmt(remaining);
+          if (floatStartBtn) floatStartBtn.disabled = running;
+          if (floatPauseBtn) floatPauseBtn.disabled = !running;
+        }
+        if (pipCanvas && pipActive) drawPiPCanvas();
+        if (popupRef && !popupRef.closed) sendPopupUpdate();
+      }
+
+      // floating button UI (keeps prompt for quick selection)
+      if (floatingBtn) {
+        floatingBtn.addEventListener('click', () => {
+          const choice = prompt('Floating options:\\n1 = Picture-in-Picture\\n2 = Compact popup\\n3 = In-page floating bar\\n(Enter 1,2,3)');
+          if (!choice) return;
+          if (choice === '1') startPiP();
+          else if (choice === '2') openPopupWindow();
+          else if (choice === '3') {
+            if (inpageFloating && !inpageFloating.classList.contains('hidden')) hideInpageFloating(); else showInpageFloating();
+          } else {
+            alert('Unknown choice');
+          }
+        });
+      }
+
+      // in-page floating control wiring (if elements exist)
+      if (floatStartBtn) floatStartBtn.addEventListener('click', () => startTimer(false, false));
+      if (floatPauseBtn) floatPauseBtn.addEventListener('click', () => pauseTimer());
+      if (floatCloseBtn) floatCloseBtn.addEventListener('click', () => hideInpageFloating());
+
+      // draggable for in-page floating (simple)
+      (function makeDraggable() {
+        if (!inpageFloating) return;
+        const el = inpageFloating;
+        const handle = el.querySelector('.float-handle') || el;
+        let dragging = false, ox=0, oy=0, startX=0, startY=0;
+        handle.addEventListener('mousedown', (e) => {
+          dragging = true;
+          ox = el.offsetLeft;
+          oy = el.offsetTop;
+          startX = e.clientX;
+          startY = e.clientY;
+          handle.style.cursor = 'grabbing';
+          document.body.style.userSelect = 'none';
+        });
+        window.addEventListener('mousemove', (e) => {
+          if (!dragging) return;
+          const dx = e.clientX - startX;
+          const dy = e.clientY - startY;
+          el.style.right = 'auto';
+          el.style.left = Math.max(6, ox + dx) + 'px';
+          el.style.top = Math.max(6, oy + dy) + 'px';
+        });
+        window.addEventListener('mouseup', () => { dragging = false; handle.style.cursor = 'grab'; document.body.style.userSelect = ''; });
+      })();
+
+      /* ===========
+         Wiring & UI actions (original)
+         =========== */
+      function wire() {
+        initialRender();
+        if (startBtn) startBtn.addEventListener('click', () => startTimer(false, false));
+        if (pauseBtn) pauseBtn.addEventListener('click', pauseTimer);
+        if (resetBtn) resetBtn.addEventListener('click', () => { resetTimer(); focusCount = 0; });
+
+        modes.forEach(mode => mode.addEventListener('click', () => {
+          const minVal = parseFloat(mode.dataset.min);
+          const min = Number.isFinite(minVal) ? minVal : DEFAULTS.work;
+          setMode(min, mode);
+        }));
+
+        window.addEventListener('keydown', (e) => {
+          if (e.code === 'Space') { e.preventDefault(); running ? pauseTimer() : startTimer(false, false); }
+          else if (e.key.toLowerCase() === 'r') { resetTimer(); focusCount = 0; }
+        });
+
+        let resizeTO;
+        window.addEventListener('resize', () => {
+          clearTimeout(resizeTO);
+          resizeTO = setTimeout(() => {
+            if (!timerEl) return;
+            timerEl.innerHTML = '';
+            timerEl.appendChild(buildDigits(fmt(remaining)));
+          }, 150);
+        });
+
+        if (analyticsBtn) analyticsBtn.addEventListener('click', () => { window.location.href = 'analytics.html'; });
+
+        try {
+          const raw = JSON.parse(localStorage.getItem(LS_KEY) || '{}');
+          if (raw && Number.isFinite(raw._focusCount)) focusCount = Number(raw._focusCount);
+        } catch (e) { /* ignore */ }
+      }
+
+      wire();
+
+      /* ===========
+         Cleanup on unload
+         =========== */
+      window.addEventListener('beforeunload', () => {
+        try { stopPiP(); } catch(e){}
+        try { if (popupRef && !popupRef.closed) popupRef.close(); } catch(e){}
+      });
+
+      /* ===========
+         Expose tiny helpers for analytics page to use:
+         =========== */
+      window.pomodoroFloating = {
+        startPiP: startPiP,
+        stopPiP: stopPiP,
+        openPopupWindow: openPopupWindow,
+        showInpageFloating: showInpageFloating,
+        hideInpageFloating: hideInpageFloating
+      };
+
+    } catch (err) {
+      console.error('Error initializing Pomodoro script:', err);
+    }
+  } // init
+
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', init);
+  } else {
+    init();
   }
-
-  function playPhaseAnimation(label) {
-    return new Promise((resolve) => {
-      const DURATION = 1200;
-      phaseLabelEl.textContent = label;
-      phaseOverlay.classList.remove('hidden');
-      phaseOverlay.classList.add('playing');
-      phaseOverlay.setAttribute('aria-hidden', 'false');
-      void phaseOverlay.offsetWidth;
-      setTimeout(() => {
-        phaseOverlay.classList.remove('playing');
-        phaseOverlay.classList.add('hidden');
-        phaseOverlay.setAttribute('aria-hidden', 'true');
-        setTimeout(resolve, 80);
-      }, DURATION);
-    });
-  }
-
-  /* ===========
-     Settings popup handlers
-     =========== */
-  function openSettings() {
-    const s = loadSettings();
-    // ensure values are shown with up to two decimals in inputs
-    workInput.value = (s.work !== undefined && !Number.isNaN(Number(s.work))) ? Number(s.work).toFixed( (Math.round(s.work*100) % 100) ? (s.work % 1 === 0 ? 0 : (s.work*100 % 100 ? 2 : 1)) : 0 ) : s.work;
-    shortInput.value = (s.short !== undefined && !Number.isNaN(Number(s.short))) ? Number(s.short) : s.short;
-    longInput.value = (s.long !== undefined && !Number.isNaN(Number(s.long))) ? Number(s.long) : s.long;
-    sessionsBeforeLongInput.value = s.sessionsBeforeLong !== undefined ? s.sessionsBeforeLong : DEFAULTS.sessionsBeforeLong;
-    autoStartInput.checked = !!s.autoStartNext;
-    autoContinueBreakInput.checked = !!s.autoContinueAfterBreak;
-    keepZeroModal.checked = !!s.leadingZero;
-
-    if (s.soundMode === 'none') soundNone.checked = true;
-    else if (s.soundMode === 'voice') soundVoice.checked = true;
-    else soundDefault.checked = true;
-
-    settingsOverlay.classList.remove('hidden');
-    settingsOverlay.setAttribute('aria-hidden', 'false');
-    setTimeout(() => workInput.focus(), 80);
-  }
-
-  function closeSettingsOverlay() {
-    settingsOverlay.classList.add('hidden');
-    settingsOverlay.setAttribute('aria-hidden', 'true');
-    settingsBtn.focus();
-  }
-
-  // helper: validate decimal minutes (0..999, up to 2 decimals)
-  function validMinutesValue(v) {
-    if (!Number.isFinite(v)) return false;
-    if (v < 0 || v > 999) return false;
-    // allow up to 2 decimal places
-    const rounded = Math.round(v * 100);
-    return Math.abs(rounded - v * 100) < 0.000001;
-  }
-
-  // save settings
-  saveSettings.addEventListener('click', () => {
-    const w = Number(workInput.value);
-    const s = Number(shortInput.value);
-    const l = Number(longInput.value);
-    const sessionsBeforeLong = Number(sessionsBeforeLongInput.value);
-    const autoStartNext = !!autoStartInput.checked;
-    const autoContinueAfterBreak = !!autoContinueBreakInput.checked;
-    const leading = !!keepZeroModal.checked;
-    const chosenSoundMode = soundNone && soundNone.checked ? 'none' : (soundVoice && soundVoice.checked ? 'voice' : 'default');
-
-    if (!validMinutesValue(w)) return focusWarn(workInput);
-    if (!validMinutesValue(s)) return focusWarn(shortInput);
-    if (!validMinutesValue(l)) return focusWarn(longInput);
-    if (!Number.isFinite(sessionsBeforeLong) || sessionsBeforeLong < 1 || sessionsBeforeLong > 99) return focusWarn(sessionsBeforeLongInput);
-
-    const newSettings = {
-      work: Number((Math.round(w*100)/100).toFixed(2)), // preserve up to 2 decimals
-      short: Number((Math.round(s*100)/100).toFixed(2)),
-      long: Number((Math.round(l*100)/100).toFixed(2)),
-      leadingZero: leading,
-      autoStartNext: autoStartNext,
-      autoContinueAfterBreak: autoContinueAfterBreak,
-      sessionsBeforeLong: Math.floor(sessionsBeforeLong),
-      soundMode: chosenSoundMode
-    };
-
-    settings = { ...newSettings };
-    saveSettingsToStorage(settings);
-    applySettings(settings);
-    focusCount = 0;
-    closeSettingsOverlay();
-  });
-
-  cancelSettings.addEventListener('click', closeSettingsOverlay);
-  settingsBtn.addEventListener('click', openSettings);
-  closeSettings.addEventListener('click', closeSettingsOverlay);
-  window.addEventListener('keydown', (e) => {
-    if (e.key === 'Escape' && !settingsOverlay.classList.contains('hidden')) closeSettingsOverlay();
-  });
-
-  function focusWarn(el) {
-    el.focus();
-    el.animate([{ boxShadow: '0 0 0 6px rgba(155,89,255,0.06)' }, { boxShadow: 'none' }], { duration: 420 });
-  }
-
-  // mirror top checkbox to modal
-  keepZeroCheckbox.addEventListener('change', () => {
-    if (keepZeroModal) keepZeroModal.checked = keepZeroCheckbox.checked;
-    updateDisplay();
-    settings.leadingZero = !!keepZeroCheckbox.checked;
-    saveSettingsToStorage(settings);
-  });
-  keepZeroModal.addEventListener('change', () => {
-    keepZeroCheckbox.checked = keepZeroModal.checked;
-  });
-
-  /* ===========
-     Wiring & UI actions
-     =========== */
-  function wire() {
-    initialRender();
-    startBtn.addEventListener('click', () => startTimer(false, false)); // manual start plays begin sound
-    pauseBtn.addEventListener('click', pauseTimer);
-    resetBtn.addEventListener('click', () => { resetTimer(); focusCount = 0; });
-
-    modes.forEach(mode => mode.addEventListener('click', () => {
-      // parse float so decimals are respected; if NaN fallback to DEFAULTS.work
-      const minVal = parseFloat(mode.dataset.min);
-      const min = Number.isFinite(minVal) ? minVal : DEFAULTS.work;
-      setMode(min, mode);
-    }));
-
-    window.addEventListener('keydown', (e) => {
-      if (e.code === 'Space') { e.preventDefault(); running ? pauseTimer() : startTimer(false, false); }
-      else if (e.key.toLowerCase() === 'r') { resetTimer(); focusCount = 0; }
-    });
-
-    let resizeTO;
-    window.addEventListener('resize', () => {
-      clearTimeout(resizeTO);
-      resizeTO = setTimeout(() => {
-        timerEl.innerHTML = '';
-        timerEl.appendChild(buildDigits(fmt(remaining)));
-      }, 150);
-    });
-
-    // restore persisted focus count optionally
-    try {
-      const raw = JSON.parse(localStorage.getItem(LS_KEY) || '{}');
-      if (raw && Number.isFinite(raw._focusCount)) focusCount = Number(raw._focusCount);
-    } catch (e) { /* ignore */ }
-  }
-
-  wire();
-  // Analytics page navigation (if present)
-  const analyticsBtn = document.getElementById('analyticsBtn');
-  if (analyticsBtn) {
-    analyticsBtn.addEventListener('click', () => {
-      window.location.href = 'analytics.html';
-    });
-  }
-
-  /* ===========
-     Expose tiny helpers for analytics page to use:
-     - window.logSession is already optionally called by this file when a session completes.
-     (Analytics page also exposes its own logSession.)
-     =========== */
-  // nothing else needed here (analytics.html uses its own storage key)
-
 })();

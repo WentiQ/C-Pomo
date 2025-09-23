@@ -219,3 +219,23 @@ html,body{height:100%;margin:0;background:radial-gradient(1200px 600px at 10% 10
 #analyticsBtn:hover {
   background: #0cc;
 }
+
+/* floating in-page bar */
+.inpage-floating{
+  position: fixed;
+  right: 18px;
+  bottom: 18px;
+  z-index: 120;
+  background: linear-gradient(180deg, rgba(11,11,13,0.95), rgba(18,18,20,0.95));
+  border: 1px solid rgba(255,255,255,0.04);
+  padding: 8px 10px;
+  border-radius: 10px;
+  display:flex;
+  gap:8px;
+  align-items:center;
+  box-shadow: 0 10px 40px rgba(0,0,0,0.55);
+}
+.inpage-floating.hidden{ display:none }
+.inpage-floating .float-handle{ cursor:grab; user-select:none; color:var(--muted); font-size:14px }
+.inpage-floating .float-controls button{ background:transparent;border:0;color:var(--muted);font-size:14px;cursor:pointer;padding:6px;border-radius:6px }
+.inpage-floating .float-controls button:hover{ color:white }

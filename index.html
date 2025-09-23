@@ -32,17 +32,33 @@
       <div class="timer" id="timer" aria-live="polite" aria-atomic="true"></div>
     </section>
 
-    <nav class="controls">
-      <button id="startBtn" class="control">Start</button>
-      <button id="pauseBtn" class="control" disabled>Pause</button>
-      <button id="resetBtn" class="control">Reset</button>
-      <button id="analyticsBtn">Analytics</button>
+    <nav class="controls" role="toolbar" aria-label="Timer controls">
+      <button id="startBtn" class="control" type="button">Start</button>
+      <button id="pauseBtn" class="control" type="button" disabled>Pause</button>
+      <button id="resetBtn" class="control" type="button">Reset</button>
+      <button id="analyticsBtn" class="control" type="button">Analytics</button>
+      <button id="floatingBtn" class="control" type="button" aria-haspopup="menu">Floating ▾</button>
       <label class="compact">
         <input type="checkbox" id="keepZero"/>
         Leading zero
       </label>
     </nav>
 
+    <canvas id="pipCanvas" width="64" height="64" style="display:none"></canvas>
+
+    <video id="pipVideo" playsinline muted style="display:none"></video>
+    
+    <div id="inpageFloating" class="inpage-floating hidden" aria-hidden="true">
+      <div class="float-handle" title="Drag to move">
+        <span id="floatMode" style="font-weight:700">FOCUS</span>
+        <span id="floatTimer" style="margin-left:12px;font-family:monospace;font-weight:900">25:00</span>
+      </div>
+      <div class="float-controls">
+        <button id="floatStart" title="Start">▶</button>
+        <button id="floatPause" title="Pause">❚❚</button>
+        <button id="floatClose" title="Close">✕</button>
+      </div>
+    </div>
     <footer class="footer">
       <small>Settings saved in localStorage • Esc to close settings</small>
     </footer>
